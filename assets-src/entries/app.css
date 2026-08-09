@@ -1,0 +1,66 @@
+@import "tailwindcss";
+
+/*
+ * Tailwind v4 автоматически сканирует только каталог корня Vite (assets-src).
+ * Шаблоны приложения лежат вне его, поэтому явно указываем источники,
+ * чтобы все утилиты из templates/*.php и src/*.php попали в сборку.
+ */
+@source "../../templates/**/*.php";
+@source "../../src/**/*.php";
+
+/* ====== Компоненты ====== */
+@layer components {
+  .card {
+    @apply bg-white border border-slate-200 rounded-lg shadow-sm;
+  }
+  .label {
+    @apply block text-sm font-medium text-slate-700 mb-1;
+  }
+  .input {
+    @apply w-full border border-slate-300 rounded-md px-3 py-2 text-sm bg-white
+           focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500;
+  }
+  .btn-primary {
+    @apply inline-block px-4 py-2 rounded-md bg-blue-600 text-white text-sm font-medium
+           hover:bg-blue-700 focus:outline-none;
+  }
+  .btn-secondary {
+    @apply inline-block px-4 py-2 rounded-md bg-slate-200 text-slate-800 text-sm font-medium
+           hover:bg-slate-300;
+  }
+  .btn-danger {
+    @apply inline-block px-4 py-2 rounded-md bg-red-100 text-red-700 text-sm font-medium
+           hover:bg-red-200;
+  }
+  .btn-danger-solid {
+    @apply inline-block px-4 py-2 rounded-md bg-red-600 text-white text-sm font-medium
+           hover:bg-red-700 focus:outline-none;
+  }
+  .table {
+    @apply w-full text-sm;
+  }
+  .table thead th {
+    @apply px-3 py-2 text-left font-semibold text-slate-600 bg-slate-50 border-b border-slate-200 whitespace-nowrap;
+  }
+  .table thead th:last-child {
+    @apply text-right;
+  }
+  .table tbody td {
+    @apply px-3 py-2 border-b border-slate-100 align-middle;
+  }
+  .alert-error {
+    @apply p-3 rounded bg-red-50 border border-red-200 text-red-800 text-sm;
+  }
+  .alert-success {
+    @apply p-3 rounded bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm;
+  }
+}
+
+@layer base {
+  code {
+    @apply bg-slate-100 px-1 rounded text-sm;
+  }
+  summary {
+    cursor: pointer;
+  }
+}
