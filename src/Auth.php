@@ -10,90 +10,10 @@
  */
 class Auth
 {
-    private const SSO_CACHE_TTL = 300; // 5 минут кэш проверки SSO-сессии
-
     // -----------------------------------------------------------
     // Единый портал (SSO): администраторы и ученики
+    // Реализация — общий AuthClient (shared/php/auth-client/AuthClient.php)
     // -----------------------------------------------------------
-
-    /**
-     * Проверяет сессию через auth-web API и возвращает данные пользователя
-     * ({ id, login, display_name, is_admin }) либо null.
-     * Результат кэшируется в локальной PHP-сессии.
-     */
-    private static function ssoUser(): ?array
-    {
-        $cached = self::getSsoCache();
-        if ($cached !== null) {
-            return $cached;
-        }
-
-        $authUrl = config()['auth_url'];
-        $cookieHeader = '';
-        if (!empty($_COOKIE['auth_session'])) {
-            $cookieHeader = 'auth_session=' . $_COOKIE['auth_session'];
-        }
-
-        $ch = curl_init($authUrl . '/api/check.php');
-        $opts = [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 5,
-            CURLOPT_SSL_VERIFYPEER => true,
-            CURLOPT_FOLLOWLOCATION => false,
-        ];
-        if ($cookieHeader !== '') {
-            $opts[CURLOPT_COOKIE] = $cookieHeader;
-        }
-        curl_setopt_array($ch, $opts);
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-
-        if ($response === false || $httpCode !== 200) {
-            return null;
-        }
-        $data = json_decode($response, true);
-        if (!is_array($data) || empty($data['authenticated'])) {
-            self::clearSsoCache();
-            return null;
-        }
-
-        $user = $data['user'];
-        self::setSsoCache($user);
-        return $user;
-    }
-
-    private static function getSsoCache(): ?array
-    {
-        if (empty($_SESSION['sso_user'])) {
-            return null;
-        }
-        $cachedAt = $_SESSION['sso_cached_at'] ?? 0;
-        if (time() - $cachedAt > self::SSO_CACHE_TTL) {
-            return null;
-        }
-        if (($_SESSION['sso_cookie_hash'] ?? '') !== self::ssoCookieHash()) {
-            return null;
-        }
-        return $_SESSION['sso_user'];
-    }
-
-    private static function setSsoCache(array $user): void
-    {
-        $_SESSION['sso_user'] = $user;
-        $_SESSION['sso_cached_at'] = time();
-        $_SESSION['sso_cookie_hash'] = self::ssoCookieHash();
-    }
-
-    private static function clearSsoCache(): void
-    {
-        unset($_SESSION['sso_user'], $_SESSION['sso_cached_at'], $_SESSION['sso_cookie_hash']);
-    }
-
-    private static function ssoCookieHash(): string
-    {
-        return hash('sha256', $_COOKIE['auth_session'] ?? '');
-    }
 
     // -----------------------------------------------------------
     // Текущий пользователь
@@ -119,8 +39,8 @@ class Auth
             unset($_SESSION['user_id']);
         }
 
-        // SSO через auth-web
-        $sso = self::ssoUser();
+        // SSO через auth-web (общий AuthClient)
+        $sso = AuthClient::check();
         if ($sso === null) {
             return null;
         }
@@ -197,7 +117,7 @@ class Auth
 
     public static function logout(): void
     {
-        self::clearSsoCache();
+        AuthClient::clearCache();
         $_SESSION = [];
         if (ini_get('session.use_cookies')) {
             $p = session_get_cookie_params();
