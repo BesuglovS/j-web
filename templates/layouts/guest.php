@@ -20,5 +20,6 @@ $title = $title ?? 'Вход в систему';
     </div>
     <?php echo $__content; ?>
 </div>
+<script src="/assets/tracking-client.js"></script>
 </body>
 </html>

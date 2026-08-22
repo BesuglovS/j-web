@@ -169,4 +169,22 @@ if ($DryRun) {
   Write-Host "  Done." -ForegroundColor Green
 }
 
+# ─── 4. Deploy nginx config ───
+$nginxSite = 'j.nayanovaacademy.ru'
+$nginxLocal = Join-Path $PSScriptRoot $nginxSite
+$nginxRemote = '/etc/nginx/sites-available/' + $nginxSite
+
+if ($DryRun) {
+  Write-Host "  [DryRun] Deploy nginx config: $nginxSite" -ForegroundColor Yellow
+} elseif (Test-Path $nginxLocal) {
+  Write-Host "`n==> Deploying nginx config ($nginxSite) ..." -ForegroundColor Cyan
+  $scpCmd = "scp $portArg $identityArg `"$nginxLocal`" ${remote}:/tmp/nginx-$nginxSite"
+  $sshNginxCmd = "ssh $portArg $identityArg $remote `"cp /tmp/nginx-$nginxSite $nginxRemote && nginx -t && systemctl reload nginx && rm -f /tmp/nginx-$nginxSite`""
+  cmd /c $scpCmd
+  if ($LASTEXITCODE -ne 0) { Write-Host "  Nginx config scp failed" -ForegroundColor Red; exit 1 }
+  cmd /c $sshNginxCmd
+  if ($LASTEXITCODE -ne 0) { Write-Host "  Nginx config install/reload failed" -ForegroundColor Red; exit 1 }
+  Write-Host "  Done." -ForegroundColor Green
+}
+
 Write-Host "`n==> Deploy complete" -ForegroundColor Green

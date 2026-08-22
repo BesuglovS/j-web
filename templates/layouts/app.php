@@ -78,5 +78,6 @@ $title = $title ?? config()['app_name'];
 
   <?php echo $__content; ?>
 </main>
+<script src="/assets/tracking-client.js"></script>
 </body>
 </html>
