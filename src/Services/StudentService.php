@@ -78,7 +78,7 @@ class StudentService
      */
     public static function sync(): array
     {
-        $report = ['ok' => 0, 'added' => 0, 'updated' => 0, 'errors' => []];
+        $report = ['ok' => 0, 'added' => 0, 'updated' => 0, 'removed' => 0, 'deactivated' => 0, 'errors' => []];
         $users = static::fetchUsersFromAuth();
         $memberships = static::fetchMembershipsFromAuth();
         if ($users === null || $memberships === null) {
@@ -132,8 +132,8 @@ class StudentService
 
         $updUser = $pdo->prepare('UPDATE users SET full_name=? WHERE id=?');
         $insUser = $pdo->prepare('INSERT INTO users (login, password_hash, role, full_name) VALUES (?,?,?,?)');
-        $updStudent = $pdo->prepare('UPDATE students SET class_id=?, last_name=?, first_name=?, middle_name=?, user_id=? WHERE id=?');
-        $insStudent = $pdo->prepare('INSERT INTO students (user_id, class_id, last_name, first_name, middle_name, external_id) VALUES (?,?,?,?,?,?)');
+        $updStudent = $pdo->prepare('UPDATE students SET class_id=?, last_name=?, first_name=?, middle_name=?, user_id=?, is_active=1 WHERE id=?');
+        $insStudent = $pdo->prepare('INSERT INTO students (user_id, class_id, last_name, first_name, middle_name, external_id, is_active) VALUES (?,?,?,?,?,?,1)');
 
         foreach ($users as $u) {
             $extId = (int)($u['id'] ?? 0);
@@ -175,6 +175,36 @@ class StudentService
                 $report['added']++;
             }
             $report['ok']++;
+        }
+
+        // Ученики, больше не состоящие ни в одной группе auth-web, — кандидаты
+        // на удаление из класса. Удаляем только при отсутствии связанных данных
+        // (оценки, ДЗ, замечания, связи с родителями); иначе помечаем is_active=0,
+        // чтобы скрыть из списков класса, сохранив историю.
+        $activeExtIds = array_keys($studentClass);
+        $allStudents = $pdo->query('SELECT id, external_id FROM students')->fetchAll();
+        $delStudent = $pdo->prepare('DELETE FROM students WHERE id=?');
+        $deactStudent = $pdo->prepare('UPDATE students SET is_active=0 WHERE id=?');
+        $cntLinked = $pdo->prepare(
+            'SELECT (SELECT COUNT(*) FROM marks WHERE student_id=?)'
+            . ' + (SELECT COUNT(*) FROM homework_submissions WHERE student_id=?)'
+            . ' + (SELECT COUNT(*) FROM lesson_remarks WHERE student_id=?)'
+            . ' + (SELECT COUNT(*) FROM student_parent WHERE student_id=?) AS cnt'
+        );
+        foreach ($allStudents as $row) {
+            $ext = $row['external_id'] === null ? null : (int)$row['external_id'];
+            if ($ext !== null && in_array($ext, $activeExtIds, true)) {
+                continue; // актуальный участник группы — обработан выше
+            }
+            $cntLinked->execute([$row['id'], $row['id'], $row['id'], $row['id']]);
+            $linked = (int)($cntLinked->fetchColumn() ?? 0);
+            if ($linked === 0) {
+                $delStudent->execute([$row['id']]);
+                $report['removed']++;
+            } else {
+                $deactStudent->execute([$row['id']]);
+                $report['deactivated']++;
+            }
         }
 
         $_SESSION['students_synced_at'] = time();

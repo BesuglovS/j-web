@@ -20,6 +20,11 @@ class Router
         $this->add('POST', $pattern, $handler);
     }
 
+    public function options(string $pattern, string $handler): void
+    {
+        $this->add('OPTIONS', $pattern, $handler);
+    }
+
     private function add(string $method, string $pattern, string $handler): void
     {
         $this->routes[] = [

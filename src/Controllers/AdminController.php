@@ -35,7 +35,7 @@ class AdminController
     {
         $this->boot();
         GroupService::ensureSynced();
-        $rows = Database::pdo()->query('SELECT c.*, (SELECT COUNT(*) FROM students s WHERE s.class_id=c.id) AS cnt FROM classes c ORDER BY c.grade, c.name')->fetchAll();
+        $rows = Database::pdo()->query('SELECT c.*, (SELECT COUNT(*) FROM students s WHERE s.class_id=c.id AND s.is_active=1) AS cnt FROM classes c ORDER BY c.grade, c.name')->fetchAll();
         return View::render('admin/classes', compact('rows'));
     }
 
@@ -144,11 +144,11 @@ class AdminController
         if ($classId) {
             $st = Database::pdo()->prepare(
                 'SELECT s.*, c.name AS class_name, u.login AS login, u.id AS user_id
-                 FROM students s
-                 LEFT JOIN classes c ON c.id = s.class_id
-                 LEFT JOIN users u ON u.id = s.user_id
-                 WHERE s.class_id = ?
-                 ORDER BY s.last_name, s.first_name'
+                  FROM students s
+                  LEFT JOIN classes c ON c.id = s.class_id
+                  LEFT JOIN users u ON u.id = s.user_id
+                  WHERE s.class_id = ? AND s.is_active = 1
+                  ORDER BY s.last_name, s.first_name'
             );
             $st->execute([$classId]);
             $rows = $st->fetchAll();
@@ -164,7 +164,7 @@ class AdminController
         if ($report['errors']) {
             flash_set('admin_error', implode(' ', $report['errors']));
         } else {
-            flash_set('admin_ok', 'Студенты обновлены: добавлено ' . $report['added'] . ', обновлено ' . $report['updated'] . '.');
+            flash_set('admin_ok', 'Студенты обновлены: добавлено ' . $report['added'] . ', обновлено ' . $report['updated'] . ', удалено ' . $report['removed'] . ', скрыто (есть данные) ' . $report['deactivated'] . '.');
         }
         redirect('/admin/students');
     }
@@ -412,7 +412,7 @@ class AdminController
             throw new RuntimeException('Занятие не найдено');
         }
         // студенты класса + их оценки/ДЗ/замечания за это занятие
-        $students = $pdo->prepare('SELECT s.* FROM students s WHERE s.class_id=? ORDER BY s.last_name');
+        $students = $pdo->prepare('SELECT s.* FROM students s WHERE s.class_id=? AND s.is_active=1 ORDER BY s.last_name');
         $students->execute([$lesson['class_id']]);
         $students = $students->fetchAll();
 

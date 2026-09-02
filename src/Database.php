@@ -69,6 +69,7 @@ class Database
         self::dropColumns($pdo, 'subjects', ['teacher_name']);
 
         self::addColumn($pdo, 'students', 'external_id', 'INTEGER');
+        self::addColumn($pdo, 'students', 'is_active', 'INTEGER NOT NULL DEFAULT 1');
         // Предмет привязан к классу; для существующих БД добавляем колонку
         // и проставляем класс из уже созданных занятий (без данных — NULL).
         self::addColumn($pdo, 'subjects', 'class_id', 'INTEGER');

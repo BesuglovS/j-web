@@ -58,6 +58,12 @@ server {
     }
 
     # 3. Кэширование статики
+    # tracking-client bez content-hash - ne keshirovat, inache obnovleniya
+    # dohodyat do 30 dney.
+    location = /assets/tracking-client.js {
+        add_header Cache-Control "no-cache, must-revalidate";
+    }
+
     location ~* \.(css|js|png|jpg|jpeg|gif|ico|svg|woff|woff2)$ {
         expires 30d;
         add_header Cache-Control "public, immutable";

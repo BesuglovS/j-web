@@ -138,6 +138,22 @@ CREATE TABLE IF NOT EXISTS lesson_remarks (
     FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS attendance (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id INTEGER NOT NULL,
+    lesson_id  INTEGER NOT NULL,
+    status     TEXT NOT NULL DEFAULT 'present'
+               CHECK (status IN ('present','absent','late')),
+    comment    TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (student_id, lesson_id),
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+    FOREIGN KEY (lesson_id)  REFERENCES lessons(id)  ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_attendance_lesson  ON attendance(lesson_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_student ON attendance(student_id);
+
 CREATE TABLE IF NOT EXISTS import_logs (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     filename   TEXT NOT NULL,

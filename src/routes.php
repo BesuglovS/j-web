@@ -73,4 +73,19 @@ $r->get('/my/remarks',           'StudentController@remarks');
 $r->get('/parent',                'ParentController@index');
 $r->get('/parent/child/{id}',     'ParentController@child');
 
+// ---- API v1 (JSON) для мобильного приложения ----
+$r->options('/api/v1/{any}', 'ApiController@me'); // CORS preflight
+$r->get('/api/v1/me',                       'ApiController@me');
+$r->get('/api/v1/classes',                  'ApiController@classes');
+$r->get('/api/v1/classes/{id}/subjects',    'ApiController@classSubjects');
+$r->get('/api/v1/lessons',                  'ApiController@lessons');
+$r->get('/api/v1/lessons/{id}',             'ApiController@lessonDetail');
+$r->post('/api/v1/lessons',                 'ApiController@lessonCreate');
+$r->post('/api/v1/lessons/{id}/marks',      'ApiController@markSave');
+$r->post('/api/v1/lessons/{id}/remarks',    'ApiController@remarkSave');
+$r->post('/api/v1/lessons/{id}/attendance', 'ApiController@attendanceSave');
+$r->get('/api/v1/students',                 'ApiController@students');
+$r->get('/api/v1/quarters',                 'ApiController@quarters');
+$r->get('/api/v1/grades',                   'ApiController@grades');
+
 return $r;

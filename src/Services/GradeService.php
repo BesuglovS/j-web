@@ -19,7 +19,7 @@ class GradeService
             return $out;
         }
 
-        $students = $pdo->prepare('SELECT * FROM students WHERE class_id=? ORDER BY last_name, first_name');
+        $students = $pdo->prepare('SELECT * FROM students WHERE class_id=? AND is_active=1 ORDER BY last_name, first_name');
         $students->execute([$classId]);
         $out['students'] = $students->fetchAll();
 
