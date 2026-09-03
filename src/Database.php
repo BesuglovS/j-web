@@ -68,6 +68,10 @@ class Database
         self::dropColumns($pdo, 'parents', ['email', 'phone']);
         self::dropColumns($pdo, 'subjects', ['teacher_name']);
 
+        // Пересоздаём marks без UNIQUE(student_id, lesson_id, work_type):
+        // разрешаем несколько оценок за урок (мобильное приложение).
+        self::rebuildMarksTable($pdo);
+
         self::addColumn($pdo, 'students', 'external_id', 'INTEGER');
         self::addColumn($pdo, 'students', 'is_active', 'INTEGER NOT NULL DEFAULT 1');
         // Предмет привязан к классу; для существующих БД добавляем колонку
@@ -75,6 +79,8 @@ class Database
         self::addColumn($pdo, 'subjects', 'class_id', 'INTEGER');
         $pdo->exec('UPDATE subjects SET class_id = (SELECT l.class_id FROM lessons l WHERE l.subject_id = subjects.id LIMIT 1) WHERE class_id IS NULL');
         self::addColumn($pdo, 'classes', 'external_id', 'INTEGER');
+        // Минуты опоздания для статуса 'late' (мобильное приложение).
+        self::addColumn($pdo, 'attendance', 'late_minutes', 'INTEGER');
         $indexes = $pdo->query("PRAGMA index_list('classes')")->fetchAll();
         $hasClassIdx = false;
         foreach ($indexes as $ix) {
@@ -132,6 +138,43 @@ class Database
                 $pdo->exec('ALTER TABLE ' . $table . ' DROP COLUMN ' . $col);
             }
         }
+    }
+
+    /**
+     * Пересоздаёт таблицу marks без UNIQUE(student_id, lesson_id, work_type),
+     * если ограничение ещё есть (идемпотентно). Оценки со значением 1 не
+     * переносятся: допускаются только 2–5.
+     */
+    private static function rebuildMarksTable(PDO $pdo): void
+    {
+        $sql = (string)$pdo->query(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='marks'"
+        )->fetchColumn();
+        if ($sql === '' || stripos($sql, 'UNIQUE') === false) {
+            return; // таблицы нет или уже без ограничения
+        }
+        $pdo->exec(
+            'CREATE TABLE marks_new (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                student_id INTEGER NOT NULL,
+                lesson_id  INTEGER NOT NULL,
+                value      INTEGER CHECK (value BETWEEN 1 AND 5),
+                work_type  TEXT NOT NULL DEFAULT \'lesson\',
+                comment    TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime(\'now\')),
+                FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+                FOREIGN KEY (lesson_id)  REFERENCES lessons(id)  ON DELETE CASCADE
+            )'
+        );
+        $pdo->exec(
+            'INSERT INTO marks_new (id, student_id, lesson_id, value, work_type, comment, created_at)
+             SELECT id, student_id, lesson_id, value, work_type, comment, created_at FROM marks
+             WHERE value IS NULL OR value >= 2'
+        );
+        $pdo->exec('DROP TABLE marks');
+        $pdo->exec('ALTER TABLE marks_new RENAME TO marks');
+        $pdo->exec('CREATE INDEX IF NOT EXISTS idx_marks_lesson  ON marks(lesson_id)');
+        $pdo->exec('CREATE INDEX IF NOT EXISTS idx_marks_student ON marks(student_id)');
     }
 
     private static function splitSql(string $sql): array

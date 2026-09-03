@@ -101,6 +101,8 @@ CREATE TABLE IF NOT EXISTS homeworks (
     FOREIGN KEY (lesson_id) REFERENCES lessons(id) ON DELETE CASCADE
 );
 
+-- Несколько оценок за урок: без UNIQUE(student_id, lesson_id, work_type).
+-- Для существующих БД таблица пересоздаётся программно в Database::migrate().
 CREATE TABLE IF NOT EXISTS marks (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     student_id INTEGER NOT NULL,
@@ -109,7 +111,6 @@ CREATE TABLE IF NOT EXISTS marks (
     work_type  TEXT NOT NULL DEFAULT 'lesson',
     comment    TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE (student_id, lesson_id, work_type),
     FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
     FOREIGN KEY (lesson_id)  REFERENCES lessons(id)  ON DELETE CASCADE
 );
@@ -145,6 +146,7 @@ CREATE TABLE IF NOT EXISTS attendance (
     status     TEXT NOT NULL DEFAULT 'present'
                CHECK (status IN ('present','absent','late')),
     comment    TEXT,
+    late_minutes INTEGER,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE (student_id, lesson_id),
     FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,

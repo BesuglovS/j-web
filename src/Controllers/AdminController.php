@@ -548,8 +548,7 @@ class AdminController
         );
         $attDelete = $pdo->prepare('DELETE FROM attendance WHERE student_id=? AND lesson_id=?');
         $markUpsert = $pdo->prepare(
-            'INSERT INTO marks (student_id, lesson_id, value, work_type, comment) VALUES (?,?,?,?,?)
-             ON CONFLICT(student_id, lesson_id, work_type) DO UPDATE SET value=excluded.value, comment=excluded.comment'
+            'INSERT INTO marks (student_id, lesson_id, value, work_type, comment) VALUES (?,?,?,?,?)'
         );
         $markDelete = $pdo->prepare('DELETE FROM marks WHERE student_id=? AND lesson_id=? AND work_type=?');
         $remarkInsert = $pdo->prepare('INSERT INTO lesson_remarks (lesson_id, student_id, text) VALUES (?,?,?)');
@@ -583,6 +582,8 @@ class AdminController
                 if ($v === '') {
                     $markDelete->execute([$sid, $lessonId, $workType]);
                 } elseif (is_numeric($v) && (int)$v >= 1 && (int)$v <= 5) {
+                    // Без UNIQUE-ограничения: удаляем старую оценку перед вставкой
+                    $markDelete->execute([$sid, $lessonId, $workType]);
                     $markUpsert->execute([$sid, $lessonId, (int)$v, $workType, $comment]);
                 }
             }
@@ -749,8 +750,9 @@ class AdminController
                 if ($v === '') {
                     $pdo->prepare('DELETE FROM marks WHERE student_id=? AND lesson_id=? AND work_type=?')->execute([$studentId, $lessonId, $workType]);
                 } elseif (is_numeric($v) && (int)$v >= 1 && (int)$v <= 5) {
-                    $pdo->prepare('INSERT INTO marks (student_id, lesson_id, value, work_type, comment) VALUES (?,?,?,?,?)
-                        ON CONFLICT(student_id, lesson_id, work_type) DO UPDATE SET value=excluded.value, comment=excluded.comment')
+                    // Без UNIQUE-ограничения: удаляем старую оценку перед вставкой
+                    $pdo->prepare('DELETE FROM marks WHERE student_id=? AND lesson_id=? AND work_type=?')->execute([$studentId, $lessonId, $workType]);
+                    $pdo->prepare('INSERT INTO marks (student_id, lesson_id, value, work_type, comment) VALUES (?,?,?,?,?)')
                         ->execute([$studentId, $lessonId, (int)$v, $workType, $comment]);
                 }
             }

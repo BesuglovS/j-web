@@ -68,6 +68,10 @@ class ApiController
         $this->requireAdmin();
         $classId = (int)($_GET['class_id'] ?? 0);
         $subjectId = (int)($_GET['subject_id'] ?? 0);
+        $date = trim((string)($_GET['date'] ?? ''));
+        if ($date !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+            $date = '';
+        }
         $pdo = Database::pdo();
         $sql = 'SELECT l.*, c.name AS class_name, s.name AS subject_name
                 FROM lessons l
@@ -77,8 +81,12 @@ class ApiController
         $args = [];
         if ($classId) { $where[] = 'l.class_id=?'; $args[] = $classId; }
         if ($subjectId) { $where[] = 'l.subject_id=?'; $args[] = $subjectId; }
+        if ($date !== '') { $where[] = 'l.date=?'; $args[] = $date; }
         if ($where) { $sql .= ' WHERE ' . implode(' AND ', $where); }
-        $sql .= ' ORDER BY l.date DESC, l.start_time DESC';
+        // Для конкретной даты — хронологический порядок по времени начала.
+        $sql .= $date !== ''
+            ? ' ORDER BY l.start_time ASC, l.id ASC'
+            : ' ORDER BY l.date DESC, l.start_time DESC';
         $st = $pdo->prepare($sql);
         $st->execute($args);
         $this->json(['lessons' => $st->fetchAll()]);
@@ -102,10 +110,11 @@ class ApiController
         $students = $students->fetchAll();
 
         $marks = [];
-        $st = $pdo->prepare('SELECT * FROM marks WHERE lesson_id=?');
+        $st = $pdo->prepare('SELECT * FROM marks WHERE lesson_id=? ORDER BY id');
         $st->execute([$id]);
         foreach ($st->fetchAll() as $m) {
-            $marks[$m['student_id']][$m['work_type']] = $m;
+            // Несколько оценок за урок: список на ученика
+            $marks[$m['student_id']][] = $m;
         }
 
         $remarks = [];
@@ -121,10 +130,30 @@ class ApiController
         foreach ($st->fetchAll() as $a) {
             $attendance[$a['student_id']] = $a;
         }
-
         $homeworks = $pdo->prepare('SELECT * FROM homeworks WHERE lesson_id=?');
         $homeworks->execute([$id]);
         $homeworks = $homeworks->fetchAll();
+
+        // ДЗ текущего урока (первое, ДЗ на следующий урок)
+        $homework = $homeworks[0] ?? null;
+
+        // ДЗ предыдущего урока (тот же класс и предмет), если оно там задано
+        $previousHomework = null;
+        $previousLessonDate = null;
+        $prevSt = $pdo->prepare(
+            'SELECT id, date FROM lessons
+             WHERE class_id=? AND subject_id=? AND id<>?
+               AND (date < ? OR (date = ? AND id < ?))
+             ORDER BY date DESC, id DESC LIMIT 1'
+        );
+        $prevSt->execute([$lesson['class_id'], $lesson['subject_id'], $id, $lesson['date'], $lesson['date'], $id]);
+        $prevLesson = $prevSt->fetch();
+        if ($prevLesson) {
+            $previousLessonDate = $prevLesson['date'];
+            $hwSt = $pdo->prepare('SELECT * FROM homeworks WHERE lesson_id=? ORDER BY id LIMIT 1');
+            $hwSt->execute([(int)$prevLesson['id']]);
+            $previousHomework = $hwSt->fetch() ?: null;
+        }
 
         $this->json([
             'lesson'     => $lesson,
@@ -133,6 +162,9 @@ class ApiController
             'remarks'    => $remarks,
             'attendance' => $attendance,
             'homeworks'  => $homeworks,
+            'homework'           => $homework,
+            'previous_homework'  => $previousHomework,
+            'previous_lesson_date' => $previousLessonDate,
         ]);
     }
 
@@ -168,23 +200,27 @@ class ApiController
         $marks = $data['marks'] ?? [];
         $pdo = Database::pdo();
 
-        foreach ($marks as $studentId => $byType) {
+        // Формат: marks[<student_id>] = [{value: 2..5, work_type: 'lesson'}, ...]
+        // Список ученика полностью заменяет его оценки за урок
+        // (пустой список удаляет все). Допускаются только оценки 2–5.
+        foreach ($marks as $studentId => $entries) {
             $studentId = (int)$studentId;
-            foreach ($byType as $workType => $entry) {
-                $workType = trim((string)$workType);
+            $pdo->prepare('DELETE FROM marks WHERE student_id=? AND lesson_id=?')
+                ->execute([$studentId, $lessonId]);
+            foreach ((array)$entries as $entry) {
+                $entry = (array)$entry;
                 $value = isset($entry['value']) ? (int)$entry['value'] : 0;
-                $comment = trim((string)($entry['comment'] ?? ''));
-                if ($workType === '') continue;
-
-                if ($value === 0) {
-                    $pdo->prepare('DELETE FROM marks WHERE student_id=? AND lesson_id=? AND work_type=?')
-                        ->execute([$studentId, $lessonId, $workType]);
-                } elseif ($value >= 1 && $value <= 5) {
-                    $pdo->prepare(
-                        'INSERT INTO marks (student_id, lesson_id, value, work_type, comment) VALUES (?,?,?,?,?)
-                         ON CONFLICT(student_id, lesson_id, work_type) DO UPDATE SET value=excluded.value, comment=excluded.comment'
-                    )->execute([$studentId, $lessonId, $value, $workType, $comment]);
+                $workType = trim((string)($entry['work_type'] ?? 'lesson'));
+                if ($workType === '') {
+                    $workType = 'lesson';
                 }
+                $comment = trim((string)($entry['comment'] ?? ''));
+                if ($value < 2 || $value > 5) {
+                    continue;
+                }
+                $pdo->prepare(
+                    'INSERT INTO marks (student_id, lesson_id, value, work_type, comment) VALUES (?,?,?,?,?)'
+                )->execute([$studentId, $lessonId, $value, $workType, $comment]);
             }
         }
         $this->json(['ok' => true]);
@@ -227,14 +263,48 @@ class ApiController
 
         foreach ($records as $studentId => $entry) {
             $studentId = (int)$studentId;
+            $entry = (array)$entry;
             $status = trim((string)($entry['status'] ?? 'present'));
             $comment = trim((string)($entry['comment'] ?? ''));
+            $lateMinutes = isset($entry['late_minutes']) ? max(0, (int)$entry['late_minutes']) : null;
             if (!in_array($status, ['present', 'absent', 'late'], true)) continue;
+            if ($status !== 'late') {
+                $lateMinutes = null;
+            }
 
             $pdo->prepare(
-                'INSERT INTO attendance (student_id, lesson_id, status, comment) VALUES (?,?,?,?)
-                 ON CONFLICT(student_id, lesson_id) DO UPDATE SET status=excluded.status, comment=excluded.comment'
-            )->execute([$studentId, $lessonId, $status, $comment]);
+                'INSERT INTO attendance (student_id, lesson_id, status, comment, late_minutes) VALUES (?,?,?,?,?)
+                 ON CONFLICT(student_id, lesson_id) DO UPDATE SET status=excluded.status, comment=excluded.comment, late_minutes=excluded.late_minutes'
+            )->execute([$studentId, $lessonId, $status, $comment, $lateMinutes]);
+        }
+        $this->json(['ok' => true]);
+    }
+
+    /**
+     * Домашнее задание урока (задаётся сейчас, выполняется к следующему уроку).
+     * Тело: {title, description, due_date}. Обновляет существующее ДЗ урока
+     * или создаёт его (одно ДЗ на урок).
+     */
+    public function homeworkSave(array $params): void
+    {
+        $this->requireAdmin();
+        $lessonId = (int)$params[0];
+        $data = $this->input();
+        $title = trim((string)($data['title'] ?? ''));
+        $description = trim((string)($data['description'] ?? ''));
+        $dueDate = trim((string)($data['due_date'] ?? ''));
+        $pdo = Database::pdo();
+
+        $st = $pdo->prepare('SELECT id FROM homeworks WHERE lesson_id=? ORDER BY id LIMIT 1');
+        $st->execute([$lessonId]);
+        $existing = $st->fetch();
+
+        if ($existing) {
+            $pdo->prepare('UPDATE homeworks SET title=?, description=?, due_date=? WHERE id=? AND lesson_id=?')
+                ->execute([$title ?: null, $description ?: null, $dueDate ?: null, (int)$existing['id'], $lessonId]);
+        } else {
+            $pdo->prepare('INSERT INTO homeworks (lesson_id, title, description, due_date) VALUES (?,?,?,?)')
+                ->execute([$lessonId, $title ?: null, $description ?: null, $dueDate ?: null]);
         }
         $this->json(['ok' => true]);
     }
