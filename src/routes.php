@@ -38,6 +38,10 @@ $r->post('/admin/links/save',       'AdminController@linkSave');
 
 // журнал занятий
 $r->get('/admin/lessons',          'AdminController@lessonsIndex');
+$r->get('/admin/lessons/quick',    'AdminController@quickDay');
+$r->post('/admin/lessons/quick/save', 'AdminController@quickDaySave');
+$r->get('/admin/lessons/attend',    'AdminController@quickAttend');
+$r->post('/admin/lessons/attend/save', 'AdminController@quickAttendSave');
 $r->get('/admin/lessons/new',      'AdminController@lessonForm');
 $r->get('/admin/lessons/edit',     'AdminController@lessonForm');
 $r->post('/admin/lessons/save',    'AdminController@lessonSave');

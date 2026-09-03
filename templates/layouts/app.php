@@ -19,6 +19,8 @@ $title = $title ?? config()['app_name'];
       <?php if ($role === 'admin'): ?>
         <a href="/admin" class="px-3 py-1.5 rounded hover:bg-slate-700">Обзор</a>
         <a href="/admin/lessons" class="px-3 py-1.5 rounded hover:bg-slate-700">Журнал</a>
+        <a href="/admin/lessons/quick" class="px-3 py-1.5 rounded hover:bg-slate-700">Расписание на день</a>
+        <a href="/admin/lessons/attend" class="px-3 py-1.5 rounded hover:bg-slate-700">Быстрый ввод</a>
         <a href="/admin/classes" class="px-3 py-1.5 rounded hover:bg-slate-700">Классы</a>
         <a href="/admin/subjects" class="px-3 py-1.5 rounded hover:bg-slate-700">Предметы</a>
         <a href="/admin/students" class="px-3 py-1.5 rounded hover:bg-slate-700">Студенты</a>

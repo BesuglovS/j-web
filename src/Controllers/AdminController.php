@@ -64,7 +64,14 @@ class AdminController
              ORDER BY c.grade, c.name, s.name'
         )->fetchAll();
         $classes = Database::pdo()->query('SELECT * FROM classes ORDER BY grade, name')->fetchAll();
-        return View::render('admin/subjects', compact('rows', 'classes'));
+        $editId = (int)($_GET['edit'] ?? 0);
+        $edit = null;
+        if ($editId) {
+            $st = Database::pdo()->prepare('SELECT * FROM subjects WHERE id=?');
+            $st->execute([$editId]);
+            $edit = $st->fetch();
+        }
+        return View::render('admin/subjects', compact('rows', 'classes', 'edit'));
     }
 
     public function subjectSave(): void
@@ -322,6 +329,281 @@ class AdminController
         $pdo->prepare('INSERT INTO users (login, password_hash, role, full_name) VALUES (?,?,?,?)')
             ->execute([$login, $hash, $role, $name]);
         return (int)$pdo->lastInsertId();
+    }
+
+    // ================== Быстрый ввод расписания на день ==================
+
+    /** Фиксированные слоты уроков: номер => время начала */
+    public const LESSON_TIMES = [
+        1 => '08:00',
+        2 => '08:50',
+        3 => '09:50',
+        4 => '10:50',
+        5 => '11:40',
+        6 => '12:30',
+        7 => '13:20',
+        8 => '14:10',
+        9 => '15:00',
+    ];
+
+    public function quickDay(): string
+    {
+        $this->boot();
+        GroupService::ensureSynced();
+        $date = (string)($_GET['date'] ?? today());
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+            $date = today();
+        }
+        // все пары «класс — предмет» (преподаватель один, ведёт все классы)
+        $subjects = Database::pdo()->query(
+            'SELECT s.id, s.name, s.class_id, c.name AS class_name
+             FROM subjects s
+             JOIN classes c ON c.id = s.class_id
+             ORDER BY c.grade, c.name, s.name'
+        )->fetchAll();
+        // уже введённые занятия на дату: время => занятие (с названием класса и предмета)
+        $existing = [];
+        $st = Database::pdo()->prepare(
+            'SELECT l.*, c.name AS class_name, s.name AS subject_name
+             FROM lessons l
+             JOIN classes c ON c.id = l.class_id
+             JOIN subjects s ON s.id = l.subject_id
+             WHERE l.date=?'
+        );
+        $st->execute([$date]);
+        foreach ($st->fetchAll() as $l) {
+            if ($l['start_time'] !== null && !isset($existing[(string)$l['start_time']])) {
+                $existing[(string)$l['start_time']] = $l;
+            }
+        }
+        return View::render('admin/quickDay', compact('date', 'subjects', 'existing'));
+    }
+
+    public function quickDaySave(): void
+    {
+        $this->boot();
+        $this->csrfGuard();
+        $date = (string)($_POST['date'] ?? '');
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+            flash_set('admin_error', 'Укажите корректную дату.');
+            redirect('/admin/lessons/quick');
+        }
+        $pdo = Database::pdo();
+        $findSubject = $pdo->prepare('SELECT id, class_id FROM subjects WHERE id=?');
+        $findLesson = $pdo->prepare('SELECT id FROM lessons WHERE id=? AND date=? AND start_time=?');
+        $hasData = $pdo->prepare(
+            'SELECT (SELECT COUNT(*) FROM marks m WHERE m.lesson_id=l.id)
+                  + (SELECT COUNT(*) FROM homeworks h WHERE h.lesson_id=l.id)
+                  + (SELECT COUNT(*) FROM lesson_remarks r WHERE r.lesson_id=l.id)
+                  + (SELECT COUNT(*) FROM attendance a WHERE a.lesson_id=l.id)
+             FROM lessons l WHERE l.id=?'
+        );
+        $insert = $pdo->prepare('INSERT INTO lessons (subject_id, class_id, date, start_time, topic, lesson_type) VALUES (?,?,?,?,?,?)');
+        $update = $pdo->prepare('UPDATE lessons SET subject_id=?, class_id=?, topic=?, lesson_type=? WHERE id=?');
+        $delete = $pdo->prepare('DELETE FROM lessons WHERE id=?');
+
+        $saved = 0;
+        $removed = 0;
+        $errors = [];
+        foreach (self::LESSON_TIMES as $n => $time) {
+            $subjectId = (int)($_POST['subject_' . $n] ?? 0);
+            $topic = trim((string)($_POST['topic_' . $n] ?? ''));
+            // id занятия, которое было подгружено в этот слот (скрытое поле)
+            $slotLessonId = (int)($_POST['lesson_' . $n] ?? 0);
+
+            if ($subjectId) {
+                $findSubject->execute([$subjectId]);
+                $subject = $findSubject->fetch();
+                if (!$subject) {
+                    $errors[] = 'Урок ' . $n . ': предмет не найден.';
+                    continue;
+                }
+                $classId = (int)$subject['class_id'];
+                // занятие этого слота могло принадлежать другому классу — ищем по слоту из формы
+                $findLesson->execute([$slotLessonId, $date, $time]);
+                $lessonId = $findLesson->fetchColumn();
+                $lessonId = $lessonId === false ? 0 : (int)$lessonId;
+                if ($lessonId) {
+                    $update->execute([$subjectId, $classId, $topic ?: null, null, $lessonId]);
+                } else {
+                    $insert->execute([$subjectId, $classId, $date, $time, $topic ?: null, null]);
+                }
+                $saved++;
+            } elseif ($slotLessonId) {
+                // слот очищен: удаляем занятие, только если по нему нет оценок/ДЗ/замечаний/посещаемости
+                $findLesson->execute([$slotLessonId, $date, $time]);
+                $lessonId = $findLesson->fetchColumn();
+                if ($lessonId !== false) {
+                    $hasData->execute([(int)$lessonId]);
+                    if ((int)$hasData->fetchColumn() === 0) {
+                        $delete->execute([(int)$lessonId]);
+                        $removed++;
+                    }
+                }
+            }
+        }
+        if ($errors) {
+            flash_set('admin_error', implode(' ', $errors));
+        } elseif ($saved || $removed) {
+            flash_set('admin_ok', 'Расписание сохранено: записано ' . $saved . ', удалено пустых ' . $removed . '.');
+        } else {
+            flash_set('admin_ok', 'Изменений нет.');
+        }
+        redirect('/admin/lessons/quick?date=' . ue($date));
+    }
+
+    // ================== Быстрый ввод посещаемости, отметок и замечаний ==================
+
+    public function quickAttend(): string
+    {
+        $this->boot();
+        GroupService::ensureSynced();
+        StudentService::ensureSynced();
+        $pdo = Database::pdo();
+
+        // все даты, по которым есть занятия (для первого списка)
+        $dates = $pdo->query('SELECT DISTINCT date FROM lessons ORDER BY date DESC')->fetchAll(\PDO::FETCH_COLUMN);
+        $date = (string)($_GET['date'] ?? ($dates[0] ?? today()));
+        if (!in_array($date, $dates, true)) {
+            $date = $dates[0] ?? today();
+        }
+
+        // занятия выбранной даты (для второго списка)
+        $st = $pdo->prepare(
+            'SELECT l.id, l.start_time, l.topic, c.name AS class_name, s.name AS subject_name
+             FROM lessons l
+             JOIN classes c ON c.id = l.class_id
+             JOIN subjects s ON s.id = l.subject_id
+             WHERE l.date=?
+             ORDER BY l.start_time, c.grade, c.name'
+        );
+        $st->execute([$date]);
+        $dayLessons = $st->fetchAll();
+
+        $lessonId = (int)($_GET['lesson_id'] ?? 0);
+        if (!$lessonId || !in_array($lessonId, array_column($dayLessons, 'id'), true)) {
+            $lessonId = (int)($dayLessons[0]['id'] ?? 0);
+        }
+
+        $lesson = null;
+        $students = [];
+        $attendanceMap = [];
+        $marksMap = [];
+        $remarksMap = [];
+        if ($lessonId) {
+            $st = $pdo->prepare(
+                'SELECT l.*, c.name AS class_name, s.name AS subject_name
+                 FROM lessons l
+                 JOIN classes c ON c.id = l.class_id
+                 JOIN subjects s ON s.id = l.subject_id
+                 WHERE l.id=?'
+            );
+            $st->execute([$lessonId]);
+            $lesson = $st->fetch();
+
+            $st = $pdo->prepare('SELECT * FROM students WHERE class_id=? AND is_active=1 ORDER BY last_name, first_name');
+            $st->execute([$lesson['class_id']]);
+            $students = $st->fetchAll();
+
+            $st = $pdo->prepare('SELECT * FROM attendance WHERE lesson_id=?');
+            $st->execute([$lessonId]);
+            foreach ($st->fetchAll() as $a) {
+                $attendanceMap[(int)$a['student_id']] = $a;
+            }
+            $st = $pdo->prepare('SELECT * FROM marks WHERE lesson_id=?');
+            $st->execute([$lessonId]);
+            foreach ($st->fetchAll() as $m) {
+                $marksMap[(int)$m['student_id'] . '|' . $m['work_type']] = $m;
+            }
+            $st = $pdo->prepare('SELECT * FROM lesson_remarks WHERE lesson_id=?');
+            $st->execute([$lessonId]);
+            foreach ($st->fetchAll() as $r) {
+                $remarksMap[(int)$r['student_id']][] = $r;
+            }
+        }
+
+        return View::render('admin/quickAttend', compact(
+            'dates', 'date', 'dayLessons', 'lessonId', 'lesson',
+            'students', 'attendanceMap', 'marksMap', 'remarksMap'
+        ));
+    }
+
+    public function quickAttendSave(): void
+    {
+        $this->boot();
+        $this->csrfGuard();
+        $lessonId = (int)($_POST['lesson_id'] ?? 0);
+        $pdo = Database::pdo();
+        $st = $pdo->prepare('SELECT id, class_id, date FROM lessons WHERE id=?');
+        $st->execute([$lessonId]);
+        $lesson = $st->fetch();
+        if (!$lesson) {
+            flash_set('admin_error', 'Занятие не найдено.');
+            redirect('/admin/lessons/attend');
+        }
+
+        $attUpsert = $pdo->prepare(
+            'INSERT INTO attendance (student_id, lesson_id, status, comment) VALUES (?,?,?,?)
+             ON CONFLICT(student_id, lesson_id) DO UPDATE SET status=excluded.status, comment=excluded.comment'
+        );
+        $attDelete = $pdo->prepare('DELETE FROM attendance WHERE student_id=? AND lesson_id=?');
+        $markUpsert = $pdo->prepare(
+            'INSERT INTO marks (student_id, lesson_id, value, work_type, comment) VALUES (?,?,?,?,?)
+             ON CONFLICT(student_id, lesson_id, work_type) DO UPDATE SET value=excluded.value, comment=excluded.comment'
+        );
+        $markDelete = $pdo->prepare('DELETE FROM marks WHERE student_id=? AND lesson_id=? AND work_type=?');
+        $remarkInsert = $pdo->prepare('INSERT INTO lesson_remarks (lesson_id, student_id, text) VALUES (?,?,?)');
+        $remarkDelete = $pdo->prepare('DELETE FROM lesson_remarks WHERE id=? AND lesson_id=?');
+
+        // посещаемость: attendance[studentId][status|comment]; пустой статус — запись удаляется
+        $attendance = (array)($_POST['attendance'] ?? []);
+        foreach ($attendance as $sid => $row) {
+            $sid = (int)$sid;
+            $row = (array)$row;
+            $status = trim((string)($row['status'] ?? ''));
+            if ($status === '') {
+                $attDelete->execute([$sid, $lessonId]);
+            } elseif (in_array($status, ['present', 'absent', 'late'], true)) {
+                $attUpsert->execute([$sid, $lessonId, $status, trim((string)($row['comment'] ?? '')) ?: null]);
+            }
+        }
+
+        // оценки: marks[studentId][workType]=value, comments[studentId][workType]=comment
+        $marks = (array)($_POST['marks'] ?? []);
+        $comments = (array)($_POST['comments'] ?? []);
+        foreach ($marks as $sid => $byType) {
+            $sid = (int)$sid;
+            foreach ((array)$byType as $workType => $v) {
+                $workType = trim((string)$workType);
+                $v = trim((string)$v);
+                $comment = trim((string)($comments[$sid][$workType] ?? ''));
+                if ($workType === '') {
+                    continue;
+                }
+                if ($v === '') {
+                    $markDelete->execute([$sid, $lessonId, $workType]);
+                } elseif (is_numeric($v) && (int)$v >= 1 && (int)$v <= 5) {
+                    $markUpsert->execute([$sid, $lessonId, (int)$v, $workType, $comment]);
+                }
+            }
+        }
+
+        // замечания: удалить отмеченные, добавить непустые новые
+        foreach ((array)($_POST['remove_remark'] ?? []) as $rid) {
+            $remarkDelete->execute([(int)$rid, $lessonId]);
+        }
+        foreach ((array)($_POST['remarks'] ?? []) as $sid => $rowsArr) {
+            $sid = (int)$sid;
+            foreach ((array)$rowsArr as $text) {
+                $text = trim((string)$text);
+                if ($text !== '') {
+                    $remarkInsert->execute([$lessonId, $sid, $text]);
+                }
+            }
+        }
+
+        flash_set('admin_ok', 'Данные занятия сохранены.');
+        redirect('/admin/lessons/attend?date=' . ue((string)$lesson['date']) . '&lesson_id=' . $lessonId);
     }
 
     // ================== Журнал занятий ==================
