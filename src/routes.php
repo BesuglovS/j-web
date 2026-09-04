@@ -89,6 +89,7 @@ $r->post('/api/v1/lessons/{id}/marks',      'ApiController@markSave');
 $r->post('/api/v1/lessons/{id}/remarks',    'ApiController@remarkSave');
   $r->post('/api/v1/lessons/{id}/attendance', 'ApiController@attendanceSave');
   $r->post('/api/v1/lessons/{id}/homework',   'ApiController@homeworkSave');
+  $r->post('/api/v1/homework/{id}/delete',   'ApiController@homeworkDelete');
 $r->get('/api/v1/students',                 'ApiController@students');
 $r->get('/api/v1/quarters',                 'ApiController@quarters');
 $r->get('/api/v1/grades',                   'ApiController@grades');

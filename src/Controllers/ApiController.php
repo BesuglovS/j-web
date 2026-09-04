@@ -309,6 +309,30 @@ class ApiController
         $this->json(['ok' => true]);
     }
 
+    /**
+     * Удаление домашнего задания и связанных оценок (work_type = 'ДЗ').
+     */
+    public function homeworkDelete(array $params): void
+    {
+        $this->requireAdmin();
+        $id = (int)$params[0];
+        $pdo = Database::pdo();
+
+        $st = $pdo->prepare('SELECT lesson_id FROM homeworks WHERE id=?');
+        $st->execute([$id]);
+        $row = $st->fetch();
+        if (!$row) {
+            $this->json(['error' => 'not_found'], 404);
+            return;
+        }
+        $lessonId = (int)$row['lesson_id'];
+
+        $pdo->prepare('DELETE FROM marks WHERE lesson_id=? AND work_type=?')->execute([$lessonId, 'ДЗ']);
+        $pdo->prepare('DELETE FROM homeworks WHERE id=?')->execute([$id]);
+
+        $this->json(['ok' => true]);
+    }
+
     public function students(): void
     {
         $this->requireAdmin();
