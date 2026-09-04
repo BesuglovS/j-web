@@ -92,6 +92,7 @@ $r->post('/api/v1/lessons/{id}/remarks',    'ApiController@remarkSave');
   $r->post('/api/v1/homework/{id}/delete',   'ApiController@homeworkDelete');
 $r->get('/api/v1/students',                 'ApiController@students');
 $r->get('/api/v1/quarters',                 'ApiController@quarters');
+$r->get('/api/v1/class-journal',            'ApiController@classJournal');
 $r->get('/api/v1/grades',                   'ApiController@grades');
 
 return $r;

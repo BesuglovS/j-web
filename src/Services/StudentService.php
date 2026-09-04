@@ -8,6 +8,9 @@
  * Журнал держит локальное зеркало записей (users role=student + таблица
  * students), которое обновляется из открытых API auth-web по внешнему
  * идентификатору external_id (id пользователя auth-web).
+ *
+ * Один студент может состоять в нескольких группах (класс + подгруппы):
+ * students.class_id = первичный класс, student_classes = все классы.
  */
 class StudentService
 {
@@ -73,7 +76,7 @@ class StudentService
      * Полная синхронизация: берёт пользователей auth-web, которые состоят
      * хотя бы в одной группе, и переносит их в локальные users (role=student)
      * и students (external_id = id пользователя auth-web).
-     * Удаление строк НЕ выполняется (безопасно для занятий/оценок).
+     * students.class_id = первичный класс, student_classes = все классы.
      * Возвращает отчёт.
      */
     public static function sync(): array
@@ -98,15 +101,19 @@ class StudentService
             $classes[(int)$c['external_id']] = (int)$c['id'];
         }
 
-        // пользователи auth-web, состоящие хотя бы в одной группе -> класс
-        $studentClass = [];
+        // пользователи auth-web -> все локальные class_id (много групп)
+        $studentClasses = [];
         foreach ($memberships as $m) {
             $uid = (int)($m['user_id'] ?? 0);
             $gid = (int)($m['group_id'] ?? 0);
-            if (isset($classes[$gid]) && !isset($studentClass[$uid])) {
-                $studentClass[$uid] = $classes[$gid];
+            if (isset($classes[$gid])) {
+                $studentClasses[$uid][$classes[$gid]] = true;
             }
         }
+        foreach ($studentClasses as &$arr) {
+            $arr = array_keys($arr);
+        }
+        unset($arr);
 
         // локальные users: login -> id
         $existingUsers = [];
@@ -116,7 +123,6 @@ class StudentService
         }
 
         // существующие students: external_id -> id, а также login -> id
-        // (для первичного связывания старых записей по логину)
         $existingStudents = [];
         $studentsByLogin = [];
         $st = $pdo->query('SELECT s.id, s.external_id, u.login FROM students s LEFT JOIN users u ON u.id=s.user_id');
@@ -134,6 +140,8 @@ class StudentService
         $insUser = $pdo->prepare('INSERT INTO users (login, password_hash, role, full_name) VALUES (?,?,?,?)');
         $updStudent = $pdo->prepare('UPDATE students SET class_id=?, last_name=?, first_name=?, middle_name=?, user_id=?, is_active=1 WHERE id=?');
         $insStudent = $pdo->prepare('INSERT INTO students (user_id, class_id, last_name, first_name, middle_name, external_id, is_active) VALUES (?,?,?,?,?,?,1)');
+        $insSC = $pdo->prepare('INSERT OR IGNORE INTO student_classes (student_id, class_id) VALUES (?,?)');
+        $delSC = $pdo->prepare('DELETE FROM student_classes WHERE student_id=?');
 
         foreach ($users as $u) {
             $extId = (int)($u['id'] ?? 0);
@@ -141,10 +149,11 @@ class StudentService
             if ($extId <= 0 || $login === '' || !empty($u['is_admin'])) {
                 continue;
             }
-            $classId = $studentClass[$extId] ?? null;
-            if (!$classId) {
-                continue; // не ученик ни одной группы — не студент журнала
+            $classIds = $studentClasses[$extId] ?? [];
+            if (!$classIds) {
+                continue;
             }
+            $primaryClassId = $classIds[0];
 
             $names = self::splitName((string)($u['display_name'] ?? ''));
             $loginKey = strtolower($login);
@@ -159,32 +168,40 @@ class StudentService
                 $updUser->execute([$names['full'], $localUserId]);
             }
 
-            // students.u
+            // students
+            $studentId = null;
             if (isset($existingStudents[$extId])) {
-                $updStudent->execute([$classId, $names['last'], $names['first'], $names['middle'], $localUserId, $existingStudents[$extId]]);
+                $studentId = $existingStudents[$extId];
+                $updStudent->execute([$primaryClassId, $names['last'], $names['first'], $names['middle'], $localUserId, $studentId]);
                 $report['updated']++;
             } elseif (isset($studentsByLogin[$loginKey])) {
-                // старая запись без external_id — привязываем и обновляем
-                $updStudent->execute([$classId, $names['last'], $names['first'], $names['middle'], $localUserId, $studentsByLogin[$loginKey]]);
-                $pdo->prepare('UPDATE students SET external_id=? WHERE id=?')->execute([$extId, $studentsByLogin[$loginKey]]);
-                $existingStudents[$extId] = $studentsByLogin[$loginKey];
+                $studentId = $studentsByLogin[$loginKey];
+                $updStudent->execute([$primaryClassId, $names['last'], $names['first'], $names['middle'], $localUserId, $studentId]);
+                $pdo->prepare('UPDATE students SET external_id=? WHERE id=?')->execute([$extId, $studentId]);
+                $existingStudents[$extId] = $studentId;
                 $report['updated']++;
             } else {
-                $insStudent->execute([$localUserId, $classId, $names['last'], $names['first'], $names['middle'], $extId]);
-                $existingStudents[$extId] = (int)$pdo->lastInsertId();
+                $insStudent->execute([$localUserId, $primaryClassId, $names['last'], $names['first'], $names['middle'], $extId]);
+                $studentId = (int)$pdo->lastInsertId();
+                $existingStudents[$extId] = $studentId;
                 $report['added']++;
             }
             $report['ok']++;
+
+            // student_classes: перезаписываем все классы для этого студента
+            $delSC->execute([$studentId]);
+            foreach ($classIds as $cid) {
+                $insSC->execute([$studentId, $cid]);
+            }
         }
 
         // Ученики, больше не состоящие ни в одной группе auth-web, — кандидаты
-        // на удаление из класса. Удаляем только при отсутствии связанных данных
-        // (оценки, ДЗ, замечания, связи с родителями); иначе помечаем is_active=0,
-        // чтобы скрыть из списков класса, сохранив историю.
-        $activeExtIds = array_keys($studentClass);
+        // на удаление. Удаляем при отсутствии связанных данных; иначе is_active=0.
+        $activeExtIds = array_keys($studentClasses);
         $allStudents = $pdo->query('SELECT id, external_id FROM students')->fetchAll();
         $delStudent = $pdo->prepare('DELETE FROM students WHERE id=?');
         $deactStudent = $pdo->prepare('UPDATE students SET is_active=0 WHERE id=?');
+        $delSCbyStudent = $pdo->prepare('DELETE FROM student_classes WHERE student_id=?');
         $cntLinked = $pdo->prepare(
             'SELECT (SELECT COUNT(*) FROM marks WHERE student_id=?)'
             . ' + (SELECT COUNT(*) FROM homework_submissions WHERE student_id=?)'
@@ -194,15 +211,17 @@ class StudentService
         foreach ($allStudents as $row) {
             $ext = $row['external_id'] === null ? null : (int)$row['external_id'];
             if ($ext !== null && in_array($ext, $activeExtIds, true)) {
-                continue; // актуальный участник группы — обработан выше
+                continue;
             }
             $cntLinked->execute([$row['id'], $row['id'], $row['id'], $row['id']]);
             $linked = (int)($cntLinked->fetchColumn() ?? 0);
             if ($linked === 0) {
+                $delSCbyStudent->execute([$row['id']]);
                 $delStudent->execute([$row['id']]);
                 $report['removed']++;
             } else {
                 $deactStudent->execute([$row['id']]);
+                $delSCbyStudent->execute([$row['id']]);
                 $report['deactivated']++;
             }
         }

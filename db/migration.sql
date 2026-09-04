@@ -64,6 +64,14 @@ CREATE TABLE IF NOT EXISTS parents (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
+CREATE TABLE IF NOT EXISTS student_classes (
+    student_id INTEGER NOT NULL,
+    class_id   INTEGER NOT NULL,
+    PRIMARY KEY (student_id, class_id),
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+    FOREIGN KEY (class_id)   REFERENCES classes(id)  ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS student_parent (
     student_id INTEGER NOT NULL,
     parent_id  INTEGER NOT NULL,
@@ -169,6 +177,8 @@ CREATE TABLE IF NOT EXISTS import_logs (
 -- Индексы
 CREATE INDEX IF NOT EXISTS idx_students_class   ON students(class_id);
 CREATE INDEX IF NOT EXISTS idx_students_user    ON students(user_id);
+CREATE INDEX IF NOT EXISTS idx_sc_class         ON student_classes(class_id);
+CREATE INDEX IF NOT EXISTS idx_sc_student       ON student_classes(student_id);
 CREATE INDEX IF NOT EXISTS idx_parents_user     ON parents(user_id);
 CREATE INDEX IF NOT EXISTS idx_sp_parent        ON student_parent(parent_id);
 CREATE INDEX IF NOT EXISTS idx_lessons_class    ON lessons(class_id);

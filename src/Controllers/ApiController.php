@@ -48,7 +48,7 @@ class ApiController
         $this->requireAdmin();
         GroupService::ensureSynced();
         $rows = Database::pdo()->query(
-            'SELECT c.*, (SELECT COUNT(*) FROM students s WHERE s.class_id=c.id AND s.is_active=1) AS student_count
+            'SELECT c.*, (SELECT COUNT(*) FROM student_classes sc JOIN students s ON s.id=sc.student_id WHERE sc.class_id=c.id AND s.is_active=1) AS student_count
              FROM classes c ORDER BY c.grade, c.name'
         )->fetchAll();
         $this->json(['classes' => $rows]);
@@ -105,7 +105,7 @@ class ApiController
         $lesson = $lesson->fetch();
         if (!$lesson) { $this->json(['error' => 'Урок не найден'], 404); }
 
-        $students = $pdo->prepare('SELECT * FROM students WHERE class_id=? AND is_active=1 ORDER BY last_name, first_name');
+        $students = $pdo->prepare('SELECT s.* FROM students s JOIN student_classes sc ON sc.student_id=s.id WHERE sc.class_id=? AND s.is_active=1 ORDER BY s.last_name, s.first_name');
         $students->execute([$lesson['class_id']]);
         $students = $students->fetchAll();
 
@@ -232,13 +232,10 @@ class ApiController
         $lessonId = (int)$params[0];
         $data = $this->input();
         $remarks = $data['remarks'] ?? [];
-        $removeIds = $data['remove_ids'] ?? [];
         $pdo = Database::pdo();
 
-        foreach ($removeIds as $remarkId) {
-            $pdo->prepare('DELETE FROM lesson_remarks WHERE id=? AND lesson_id=?')
-                ->execute([(int)$remarkId, $lessonId]);
-        }
+        $pdo->prepare('DELETE FROM lesson_remarks WHERE lesson_id=?')
+            ->execute([$lessonId]);
 
         foreach ($remarks as $studentId => $texts) {
             $studentId = (int)$studentId;
@@ -339,7 +336,7 @@ class ApiController
         $classId = (int)($_GET['class_id'] ?? 0);
         $pdo = Database::pdo();
         if ($classId) {
-            $st = $pdo->prepare('SELECT * FROM students WHERE class_id=? AND is_active=1 ORDER BY last_name, first_name');
+            $st = $pdo->prepare('SELECT s.* FROM students s JOIN student_classes sc ON sc.student_id=s.id WHERE sc.class_id=? AND s.is_active=1 ORDER BY s.last_name, s.first_name');
             $st->execute([$classId]);
         } else {
             $st = $pdo->query('SELECT * FROM students WHERE is_active=1 ORDER BY last_name, first_name');
@@ -352,6 +349,99 @@ class ApiController
         $this->requireAdmin();
         $rows = Database::pdo()->query('SELECT * FROM quarters ORDER BY start_date')->fetchAll();
         $this->json(['quarters' => $rows]);
+    }
+
+    /**
+     * Журнал для класса: все уроки по предмету за текущую четверту + оценки + посещаемость.
+     * GET /api/v1/class-journal?class_id=X&subject_id=Y
+     */
+    public function classJournal(): void
+    {
+        $this->requireAdmin();
+        $classId = (int)($_GET['class_id'] ?? 0);
+        $subjectId = (int)($_GET['subject_id'] ?? 0);
+        if (!$classId || !$subjectId) {
+            $this->json(['error' => 'class_id и subject_id обязательны'], 400);
+        }
+
+        $pdo = Database::pdo();
+
+        // Определяем четверту: по quarter_id или по текущей дате
+        $quarterId = (int)($_GET['quarter_id'] ?? 0);
+        $quarter = null;
+        if ($quarterId) {
+            $st = $pdo->prepare('SELECT * FROM quarters WHERE id=?');
+            $st->execute([$quarterId]);
+            $quarter = $st->fetch();
+        } else {
+            $today = date('Y-m-d');
+            $st = $pdo->prepare('SELECT * FROM quarters WHERE start_date <= ? AND end_date >= ? ORDER BY id DESC LIMIT 1');
+            $st->execute([$today, $today]);
+            $quarter = $st->fetch();
+        }
+
+        // Уроки по классу+предмету в пределах четверти
+        $sql = 'SELECT l.id, l.date, l.start_time, l.topic
+                FROM lessons l
+                WHERE l.class_id=? AND l.subject_id=?';
+        $args = [$classId, $subjectId];
+        if ($quarter) {
+            $sql .= ' AND l.date >= ? AND l.date <= ?';
+            $args[] = $quarter['start_date'];
+            $args[] = $quarter['end_date'];
+        }
+        $sql .= ' ORDER BY l.date ASC, l.start_time ASC';
+        $st = $pdo->prepare($sql);
+        $st->execute($args);
+        $lessons = $st->fetchAll();
+
+        $lessonIds = array_column($lessons, 'id');
+        $lessonIdInts = array_map('intval', $lessonIds);
+
+        // Ученики класса
+        $st = $pdo->prepare('SELECT s.id, s.last_name, s.first_name, s.middle_name
+            FROM students s JOIN student_classes sc ON sc.student_id=s.id
+            WHERE sc.class_id=? AND s.is_active=1 ORDER BY s.last_name, s.first_name');
+        $st->execute([$classId]);
+        $students = $st->fetchAll();
+
+        // Оценки по урокам
+        $marks = [];
+        if ($lessonIdInts) {
+            $placeholders = implode(',', array_fill(0, count($lessonIdInts), '?'));
+            $st = $pdo->prepare("SELECT lesson_id, student_id, value, work_type, comment
+                FROM marks WHERE lesson_id IN ($placeholders) ORDER BY id");
+            $st->execute($lessonIdInts);
+            foreach ($st->fetchAll() as $m) {
+                $marks[(string)$m['lesson_id']][(string)$m['student_id']][] = [
+                    'value' => (int)$m['value'],
+                    'work_type' => $m['work_type'],
+                    'comment' => $m['comment'] ?? '',
+                ];
+            }
+        }
+
+        // Посещаемость по урокам
+        $attendance = [];
+        if ($lessonIdInts) {
+            $placeholders = implode(',', array_fill(0, count($lessonIdInts), '?'));
+            $st = $pdo->prepare("SELECT lesson_id, student_id, status, late_minutes
+                FROM attendance WHERE lesson_id IN ($placeholders)");
+            $st->execute($lessonIdInts);
+            foreach ($st->fetchAll() as $a) {
+                $attendance[(string)$a['lesson_id']][(string)$a['student_id']] = [
+                    'status' => $a['status'],
+                    'late_minutes' => $a['late_minutes'] ?? 0,
+                ];
+            }
+        }
+
+        $this->json([
+            'lessons'    => $lessons,
+            'students'   => $students,
+            'marks'      => $marks,
+            'attendance' => $attendance,
+        ]);
     }
 
     public function grades(): void

@@ -35,7 +35,8 @@ class AdminController
     {
         $this->boot();
         GroupService::ensureSynced();
-        $rows = Database::pdo()->query('SELECT c.*, (SELECT COUNT(*) FROM students s WHERE s.class_id=c.id AND s.is_active=1) AS cnt FROM classes c ORDER BY c.grade, c.name')->fetchAll();
+        StudentService::ensureSynced();
+        $rows = Database::pdo()->query('SELECT c.*, (SELECT COUNT(*) FROM student_classes sc JOIN students s ON s.id=sc.student_id WHERE sc.class_id=c.id AND s.is_active=1) AS cnt FROM classes c ORDER BY c.grade, c.name')->fetchAll();
         return View::render('admin/classes', compact('rows'));
     }
 
@@ -44,10 +45,14 @@ class AdminController
         $this->boot();
         $this->csrfGuard();
         $report = GroupService::sync();
-        if ($report['errors']) {
-            flash_set('admin_error', implode(' ', $report['errors']));
+        $studentReport = StudentService::sync();
+        $msg = 'Классы: +' . $report['added'] . ' / обн. ' . $report['updated'];
+        $msg .= ' | Студенты: +' . $studentReport['added'] . ' / обн. ' . $studentReport['updated'];
+        if ($report['errors'] || $studentReport['errors']) {
+            $errors = array_merge($report['errors'], $studentReport['errors']);
+            flash_set('admin_error', implode(' ', $errors) . ' ' . $msg);
         } else {
-            flash_set('admin_ok', 'Классы обновлены: добавлено ' . $report['added'] . ', обновлено ' . $report['updated'] . '.');
+            flash_set('admin_ok', $msg);
         }
         redirect('/admin/classes');
     }
@@ -152,9 +157,10 @@ class AdminController
             $st = Database::pdo()->prepare(
                 'SELECT s.*, c.name AS class_name, u.login AS login, u.id AS user_id
                   FROM students s
-                  LEFT JOIN classes c ON c.id = s.class_id
+                  JOIN student_classes sc ON sc.student_id = s.id
+                  LEFT JOIN classes c ON c.id = sc.class_id
                   LEFT JOIN users u ON u.id = s.user_id
-                  WHERE s.class_id = ? AND s.is_active = 1
+                  WHERE sc.class_id = ? AND s.is_active = 1
                   ORDER BY s.last_name, s.first_name'
             );
             $st->execute([$classId]);
@@ -227,13 +233,14 @@ class AdminController
         if ($classId) {
             $st = Database::pdo()->prepare(
                 'SELECT p.*, u.login AS login, u.id AS user_id,
-                        (SELECT GROUP_CONCAT(c.name, ", ") FROM student_parent sp JOIN students s ON s.id=sp.student_id JOIN classes c ON c.id=s.class_id WHERE sp.parent_id=p.id) AS children
+                        (SELECT GROUP_CONCAT(c.name, ", ") FROM student_parent sp JOIN students s ON s.id=sp.student_id JOIN student_classes sc ON sc.student_id=s.id JOIN classes c ON c.id=sc.class_id WHERE sp.parent_id=p.id) AS children
                  FROM parents p
                  LEFT JOIN users u ON u.id = p.user_id
                  WHERE EXISTS (
                      SELECT 1 FROM student_parent sp2
                      JOIN students s2 ON s2.id = sp2.student_id
-                     WHERE sp2.parent_id = p.id AND s2.class_id = ?
+                     JOIN student_classes sc2 ON sc2.student_id = s2.id
+                     WHERE sp2.parent_id = p.id AND sc2.class_id = ?
                  )
                  ORDER BY p.last_name, p.first_name'
             );
@@ -501,7 +508,7 @@ class AdminController
             $st->execute([$lessonId]);
             $lesson = $st->fetch();
 
-            $st = $pdo->prepare('SELECT * FROM students WHERE class_id=? AND is_active=1 ORDER BY last_name, first_name');
+            $st = $pdo->prepare('SELECT s.* FROM students s JOIN student_classes sc ON sc.student_id=s.id WHERE sc.class_id=? AND s.is_active=1 ORDER BY s.last_name, s.first_name');
             $st->execute([$lesson['class_id']]);
             $students = $st->fetchAll();
 
@@ -695,7 +702,7 @@ class AdminController
             throw new RuntimeException('Занятие не найдено');
         }
         // студенты класса + их оценки/ДЗ/замечания за это занятие
-        $students = $pdo->prepare('SELECT s.* FROM students s WHERE s.class_id=? AND s.is_active=1 ORDER BY s.last_name');
+        $students = $pdo->prepare('SELECT s.* FROM students s JOIN student_classes sc ON sc.student_id=s.id WHERE sc.class_id=? AND s.is_active=1 ORDER BY s.last_name');
         $students->execute([$lesson['class_id']]);
         $students = $students->fetchAll();
 
