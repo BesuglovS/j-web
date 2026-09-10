@@ -35,6 +35,31 @@ return [
     // Endpoint принадлежности пользователей к группам auth-web
     'auth_memberships_url' => 'https://auth.nayanovaacademy.ru/api/user_groups.php',
 
+    // Внешние курсы: уроки/квизы python-web и задачи contest-web
+    'python_admin_url' => 'https://python.nayanovaacademy.ru/sandbox/admin_quiz.php',
+    'contest_admin_url' => 'https://contest.nayanovaacademy.ru/index.php?page=api&endpoint=admin_class_progress',
+    'python_site_url' => 'https://python.nayanovaacademy.ru',
+    // Всего уроков python-курса (для диапазона отображения в успеваемости)
+    'python_max_lessons' => 50,
+    // Соответствие урок python-курса → ID контеста в contest-web (источник истины — lessons.json,
+    // генерируется скриптом build-config-meta.mjs; сюда копировать из python-web/sandbox/contest_map.php)
+    'python_lesson_contests' => [
+        8 => 7,
+        10 => 8,
+        12 => 10,
+        15 => 9,
+        17 => 12,
+        19 => 13,
+        21 => 14,
+        22 => 11,
+        25 => 16,
+        26 => 15,
+        27 => 17,
+        28 => 20,
+        29 => 18,
+        30 => 19,
+    ],
+
     // Логины/пароли учётных записей: по умолчанию создаётся админ.
     // Пароли хешируются при сиде; учётные данные в pass.md.
     'initial_admin' => [

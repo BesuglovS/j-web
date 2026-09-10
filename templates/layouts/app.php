@@ -26,6 +26,7 @@ $title = $title ?? config()['app_name'];
         <a href="/admin/students" class="px-3 py-1.5 rounded hover:bg-slate-700">Студенты</a>
         <a href="/admin/parents" class="px-3 py-1.5 rounded hover:bg-slate-700">Родители</a>
         <a href="/admin/grades" class="px-3 py-1.5 rounded hover:bg-slate-700">Оценки</a>
+        <a href="/admin/python-progress" class="px-3 py-1.5 rounded hover:bg-slate-700">Python-курс</a>
         <a href="/admin/quarters" class="px-3 py-1.5 rounded hover:bg-slate-700">Периоды</a>
         <a href="/admin/import" class="px-3 py-1.5 rounded hover:bg-slate-700">Импорт</a>
         <a href="/admin/users" class="px-3 py-1.5 rounded hover:bg-slate-700">Учётные</a>

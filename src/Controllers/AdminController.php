@@ -873,6 +873,53 @@ class AdminController
         return View::render('admin/grades', compact('classId', 'quarterId', 'subjectId', 'classes', 'quarters', 'subjects', 'grades'));
     }
 
+    // ================== Успеваемость по Python-курсу ==================
+    public function pythonProgress(): string
+    {
+        $this->boot();
+        GroupService::ensureSynced();
+        StudentService::ensureSynced();
+        $classId = (int)($_GET['class_id'] ?? 0);
+        $classes = Database::pdo()->query('SELECT * FROM classes ORDER BY grade, name')->fetchAll();
+        $selected = null;
+        $summary = null;
+        if ($classId) {
+            $st = Database::pdo()->prepare('SELECT * FROM classes WHERE id=?');
+            $st->execute([$classId]);
+            $selected = $st->fetch();
+            if ($selected) {
+                if ((int)($selected['external_id'] ?? 0) > 0) {
+                    // «Обновить» — обходит кэш 5 мин (например, после удаления попыток на contest-web)
+                    $bypassCache = isset($_GET['refresh']) && $_GET['refresh'] === '1';
+                    $summary = QuizProgressService::classSummary((int)$selected['external_id'], null, $bypassCache);
+                } else {
+                    flash_set('admin_error', 'У класса нет привязки к порталу (external_id) — выполните синхронизацию классов.');
+                }
+            } else {
+                flash_set('admin_error', 'Класс не найден.');
+            }
+        }
+        $title = 'Успеваемость Python-курса';
+        $maxLessons = (int)(config()['python_max_lessons'] ?? 50);
+        // Диапазон отображаемых уроков; по умолчанию 1..last(данные класса)
+        $lessonFrom = 1;
+        $lessonTo = $summary['max_lesson'] ?? 0;
+        if ($lessonTo < 1) {
+            // данных нет вовсе: показываем минимум первое занятие, чтобы селекты имели смысл
+            $lessonTo = 0;
+        }
+        if (isset($_GET['lesson_from'])) {
+            $lessonFrom = max(1, min($maxLessons, (int)$_GET['lesson_from']));
+        }
+        if (isset($_GET['lesson_to'])) {
+            $lessonTo = max(0, min($maxLessons, (int)$_GET['lesson_to']));
+        }
+        if ($lessonTo > 0 && $lessonTo < $lessonFrom) {
+            $lessonFrom = $lessonTo; // автопомена при инверсном диапазоне
+        }
+        return View::render('admin/python_progress', compact('classId', 'classes', 'selected', 'summary', 'title', 'maxLessons', 'lessonFrom', 'lessonTo'));
+    }
+
     // ================= Импорт =================
     public function importIndex(): string
     {

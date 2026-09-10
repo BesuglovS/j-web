@@ -57,6 +57,9 @@ $r->post('/admin/homework/delete/{id}',    'AdminController@homeworkDelete');
 // итоги и отчёт
 $r->get('/admin/grades', 'AdminController@gradesIndex');
 
+// успеваемость по python-курсу (квизы python-web + задачи contest-web)
+$r->get('/admin/python-progress', 'AdminController@pythonProgress');
+
 // импорт
 $r->get('/admin/import', 'AdminController@importIndex');
 $r->post('/admin/import', 'AdminController@importProcess');
