@@ -36,6 +36,7 @@ class AdminController
         $this->boot();
         GroupService::ensureSynced();
         StudentService::ensureSynced();
+        ParentService::ensureSynced();
         $rows = Database::pdo()->query('SELECT c.*, (SELECT COUNT(*) FROM student_classes sc JOIN students s ON s.id=sc.student_id WHERE sc.class_id=c.id AND s.is_active=1) AS cnt FROM classes c ORDER BY c.grade, c.name')->fetchAll();
         return View::render('admin/classes', compact('rows'));
     }
@@ -46,10 +47,12 @@ class AdminController
         $this->csrfGuard();
         $report = GroupService::sync();
         $studentReport = StudentService::sync();
+        $parentReport = ParentService::sync();
         $msg = 'Классы: +' . $report['added'] . ' / обн. ' . $report['updated'];
         $msg .= ' | Студенты: +' . $studentReport['added'] . ' / обн. ' . $studentReport['updated'];
-        if ($report['errors'] || $studentReport['errors']) {
-            $errors = array_merge($report['errors'], $studentReport['errors']);
+        $msg .= ' | Родители: +' . $parentReport['added'] . ' / обн. ' . $parentReport['updated'] . ' / удал. ' . $parentReport['removed'];
+        if ($report['errors'] || $studentReport['errors'] || $parentReport['errors']) {
+            $errors = array_merge($report['errors'], $studentReport['errors'], $parentReport['errors']);
             flash_set('admin_error', implode(' ', $errors) . ' ' . $msg);
         } else {
             flash_set('admin_ok', $msg);
@@ -150,6 +153,8 @@ class AdminController
     {
         $this->boot();
         StudentService::ensureSynced();
+        // зеркало родителей из auth-web (profiles + связи) — обновляем при том же обходе
+        ParentService::ensureSynced();
         $classId = (int)($_GET['class_id'] ?? 0);
         $classes = Database::pdo()->query('SELECT * FROM classes ORDER BY grade, name')->fetchAll();
         $rows = [];
@@ -187,6 +192,8 @@ class AdminController
         $this->boot();
         $id = (int)$params[0];
         $pdo = Database::pdo();
+        // родители студента — read-only зеркало auth-web
+        ParentService::ensureSynced();
         $student = $pdo->prepare('SELECT s.*, c.name AS class_name, u.login FROM students s LEFT JOIN classes c ON c.id=s.class_id LEFT JOIN users u ON u.id=s.user_id WHERE s.id=?');
         $student->execute([$id]);
         $student = $student->fetch();
@@ -211,7 +218,6 @@ class AdminController
              WHERE r.student_id=? ORDER BY r.created_at DESC'
         );
         $remarks->execute([$id]);
-        $allParents = $pdo->query('SELECT * FROM parents ORDER BY last_name, first_name')->fetchAll();
 
         $allGrades = $pdo->prepare(
             'SELECT sub.name AS subject, ROUND(AVG(m.value),2) AS avg, COUNT(*) AS cnt
@@ -220,122 +226,7 @@ class AdminController
         );
         $allGrades->execute([$id]);
 
-        return View::render('admin/studentView', compact('student', 'parents', 'grades', 'remarks', 'allParents', 'allGrades'));
-    }
-
-    // ================== Родители ==================
-    public function parentsIndex(): string
-    {
-        $this->boot();
-        $classId = (int)($_GET['class_id'] ?? 0);
-        $classes = Database::pdo()->query('SELECT * FROM classes ORDER BY grade, name')->fetchAll();
-        $rows = [];
-        if ($classId) {
-            $st = Database::pdo()->prepare(
-                'SELECT p.*, u.login AS login, u.id AS user_id,
-                        (SELECT GROUP_CONCAT(c.name, ", ") FROM student_parent sp JOIN students s ON s.id=sp.student_id JOIN student_classes sc ON sc.student_id=s.id JOIN classes c ON c.id=sc.class_id WHERE sp.parent_id=p.id) AS children
-                 FROM parents p
-                 LEFT JOIN users u ON u.id = p.user_id
-                 WHERE EXISTS (
-                     SELECT 1 FROM student_parent sp2
-                     JOIN students s2 ON s2.id = sp2.student_id
-                     JOIN student_classes sc2 ON sc2.student_id = s2.id
-                     WHERE sp2.parent_id = p.id AND sc2.class_id = ?
-                 )
-                 ORDER BY p.last_name, p.first_name'
-            );
-            $st->execute([$classId]);
-            $rows = $st->fetchAll();
-        }
-        return View::render('admin/parents', compact('rows', 'classes', 'classId'));
-    }
-
-    public function parentForm(): string
-    {
-        $this->boot();
-        $id = (int)($_GET['id'] ?? 0);
-        $row = null;
-        if ($id) {
-            $row = Database::pdo()->prepare('SELECT * FROM parents WHERE id=?');
-            $row->execute([$id]);
-            $row = $row->fetch();
-        }
-        return View::render('admin/parentForm', compact('row'));
-    }
-
-    public function parentSave(): void
-    {
-        $this->boot();
-        $this->csrfGuard();
-        $id = (int)($_POST['id'] ?? 0);
-        $data = array_map('trim', [
-            'last_name'   => (string)($_POST['last_name'] ?? ''),
-            'first_name'  => (string)($_POST['first_name'] ?? ''),
-            'middle_name' => (string)($_POST['middle_name'] ?? ''),
-        ]);
-        $newLogin = trim((string)($_POST['new_login'] ?? ''));
-        $newPass = (string)($_POST['new_password'] ?? '');
-        $user_id = !empty($_POST['user_id']) ? (int)$_POST['user_id'] : null;
-        $pdo = Database::pdo();
-
-        if ($newLogin !== '') {
-            $user_id = $this->ensureUser($pdo, $newLogin, $newPass, 'parent', $this->full_name($data));
-        }
-
-        if ($id) {
-            $pdo->prepare('UPDATE parents SET user_id=?, last_name=?, first_name=?, middle_name=? WHERE id=?')
-                ->execute([$user_id, $data['last_name'], $data['first_name'], $data['middle_name'], $id]);
-        } else {
-            $pdo->prepare('INSERT INTO parents (user_id, last_name, first_name, middle_name) VALUES (?,?,?,?)')
-                ->execute([$user_id, $data['last_name'], $data['first_name'], $data['middle_name']]);
-        }
-        flash_set('admin_ok', 'Родитель сохранён.');
-        redirect('/admin/parents');
-    }
-
-    public function parentDelete(array $params): void
-    {
-        $this->boot();
-        $this->csrfGuard();
-        Database::pdo()->prepare('DELETE FROM parents WHERE id=?')->execute([(int)$params[0]]);
-        flash_set('admin_ok', 'Родитель удалён.');
-        redirect('/admin/parents');
-    }
-
-    public function linkSave(): void
-    {
-        $this->boot();
-        $this->csrfGuard();
-        $studentId = (int)($_POST['student_id'] ?? 0);
-        $parentId = (int)($_POST['parent_id'] ?? 0);
-        $detach = isset($_POST['detach']) ? (int)$_POST['detach'] : null;
-        $pdo = Database::pdo();
-        if ($detach) {
-            $pdo->prepare('DELETE FROM student_parent WHERE student_id=? AND parent_id=?')->execute([$studentId, $detach]);
-        } else {
-            $pdo->prepare('INSERT OR IGNORE INTO student_parent (student_id, parent_id) VALUES (?,?)')->execute([$studentId, $parentId]);
-        }
-        flash_set('admin_ok', 'Связь обновлена.');
-        redirect('/admin/students/' . $studentId);
-    }
-
-    private function full_name(array $d): string
-    {
-        return trim(implode(' ', array_filter([$d['last_name'] ?? '', $d['first_name'] ?? '', $d['middle_name'] ?? ''])));
-    }
-
-    private function ensureUser(\PDO $pdo, string $login, string $pass, string $role, string $name): int
-    {
-        // проверим занятость
-        $st = $pdo->prepare('SELECT id FROM users WHERE login=?');
-        $st->execute([$login]);
-        if ($u = $st->fetch()) {
-            return (int)$u['id'];
-        }
-        $hash = password_hash($pass ?: bin2hex(random_bytes(8)), PASSWORD_DEFAULT);
-        $pdo->prepare('INSERT INTO users (login, password_hash, role, full_name) VALUES (?,?,?,?)')
-            ->execute([$login, $hash, $role, $name]);
-        return (int)$pdo->lastInsertId();
+        return View::render('admin/studentView', compact('student', 'parents', 'grades', 'remarks', 'allGrades'));
     }
 
     // ================== Быстрый ввод расписания на день ==================
@@ -918,66 +809,5 @@ class AdminController
             $lessonFrom = $lessonTo; // автопомена при инверсном диапазоне
         }
         return View::render('admin/python_progress', compact('classId', 'classes', 'selected', 'summary', 'title', 'maxLessons', 'lessonFrom', 'lessonTo'));
-    }
-
-    // ================= Импорт =================
-    public function importIndex(): string
-    {
-        $this->boot();
-        return View::render('admin/import', [
-            'templates' => ImportService::templates(),
-        ]);
-    }
-
-    public function importLogs(): string
-    {
-        $this->boot();
-        $rows = Database::pdo()->query('SELECT * FROM import_logs ORDER BY created_at DESC LIMIT 50')->fetchAll();
-        return View::render('admin/importLogs', compact('rows'));
-    }
-
-    public function importProcess(): void
-    {
-        $this->boot();
-        $this->csrfGuard();
-        $kind = (string)($_POST['kind'] ?? '');
-        if (empty($_FILES['csv_file']['tmp_name'])) {
-            flash_set('admin_error', 'Не выбран файл.');
-            redirect('/admin/import');
-        }
-        $result = ImportService::process($kind, $_FILES['csv_file']);
-        $pdo = Database::pdo();
-        $pdo->prepare('INSERT INTO import_logs (filename, kind, rows_ok, rows_fail, detail) VALUES (?,?,?,?,?)')
-            ->execute([$_FILES['csv_file']['name'], $kind, $result['ok'], $result['fail'], implode("\n", $result['errors'])]);
-        flash_set('admin_import', ('Успешно: ' . $result['ok'] . ', ошибок: ' . $result['fail']));
-        redirect('/admin/import');
-    }
-
-    // ================= Пользователи =================
-    public function usersIndex(): string
-    {
-        $this->boot();
-        $rows = Database::pdo()->query('SELECT * FROM users ORDER BY role, login')->fetchAll();
-        return View::render('admin/users', compact('rows'));
-    }
-
-    public function userResetPassword(): void
-    {
-        $this->boot();
-        $this->csrfGuard();
-        $id = (int)($_POST['id'] ?? 0);
-        $pass = (string)($_POST['new_password'] ?? '');
-        // Локальные пароли есть только у родителей; ученики/админ — через портал
-        $st = Database::pdo()->prepare("SELECT id FROM users WHERE id=? AND role='parent'");
-        $st->execute([$id]);
-        if (!$st->fetch()) {
-            flash_set('admin_error', 'Сброс локального пароля возможен только для родителей.');
-        } elseif ($pass !== '' && strlen($pass) >= 6) {
-            Auth::changePassword($id, $pass);
-            flash_set('admin_ok', 'Пароль пользователя изменён.');
-        } else {
-            flash_set('admin_error', 'Пароль должен быть не короче 6 символов.');
-        }
-        redirect('/admin/users');
     }
 }

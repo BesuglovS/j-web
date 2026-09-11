@@ -4,7 +4,7 @@
 
 .DESCRIPTION
   Reads config from .env, builds frontend assets (Tailwind + Vite) on this PC,
-  packs the PHP application (public/, src/, templates/, data/) and syncs it to
+  packs the PHP application (public/, src/, templates/) and syncs it to
   the remote server via tar over SSH.
 
   User data is preserved on the server across deploys:
@@ -58,6 +58,13 @@ if ($identityFile -and (Test-Path $identityFile)) {
 $identityArg = if ($identityFile) { "-i `"$identityFile`"" } else { '' }
 $remote = "${sshUser}@${sshHost}"
 
+# Guard: the deploy wipes the project directory, allow only the correct path.
+$expectedPath = '/var/www/j.nayanovaacademy.ru'
+if ($remotePath -ne $expectedPath) {
+  Write-Host ("ERROR: wrong DEPLOY_REMOTE_PATH=$remotePath, expected=$expectedPath. Deploy aborted.") -ForegroundColor Red
+  exit 1
+}
+
 # ─── Fix SSH key permissions (Windows OpenSSH requires restrictive ACLs) ───
 if ($identityFile -and (Test-Path $identityFile)) {
   $identityFullPath = (Resolve-Path $identityFile).Path
@@ -88,7 +95,7 @@ if (-not $SkipBuild) {
 
 # ─── 3. Deploy via tar + ssh ───
 $root = $PSScriptRoot
-foreach ($d in @('public', 'src', 'templates', 'data', 'db', 'runtime')) {
+foreach ($d in @('public', 'src', 'templates', 'db', 'runtime')) {
   if (-not (Test-Path (Join-Path $root $d))) {
     Write-Host "ERROR: missing '$d/' in project. Abort." -ForegroundColor Red
     exit 1
@@ -116,7 +123,7 @@ if ($DryRun) {
     # Создаём временную папку только с файлами, которые должны попасть на сервер
     $tmpDir = Join-Path $env:TEMP "deploy-tmp-$(Get-Random)"
     New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null
-    foreach ($sub in @('public', 'src', 'templates', 'data', 'db')) {
+    foreach ($sub in @('public', 'src', 'templates', 'db')) {
       Copy-Item -Recurse -Path (Join-Path $root $sub) -Destination (Join-Path $tmpDir $sub)
     }
 

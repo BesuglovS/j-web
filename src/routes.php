@@ -5,9 +5,7 @@ $r = new Router();
 
 // ---- Аутентификация ----
 $r->get('/login', 'AuthController@loginForm');
-$r->post('/login', 'AuthController@login');
 $r->get('/logout', 'AuthController@logout');
-$r->post('/password', 'AuthController@changePassword');
 
 // ---- Корень ----
 $r->get('/', 'DashboardController@index');
@@ -28,13 +26,8 @@ $r->post('/admin/quarters/delete/{id}', 'AdminController@quarterDelete');
 $r->get('/admin/students',           'AdminController@studentsIndex');
 $r->post('/admin/students/sync',     'AdminController@studentSync');
 $r->get('/admin/students/{id}',      'AdminController@studentView');
-// родители
-$r->get('/admin/parents',           'AdminController@parentsIndex');
-$r->get('/admin/parents/new',       'AdminController@parentForm');
-$r->get('/admin/parents/edit',      'AdminController@parentForm');
-$r->post('/admin/parents/save',     'AdminController@parentSave');
-$r->post('/admin/parents/delete/{id}', 'AdminController@parentDelete');
-$r->post('/admin/links/save',       'AdminController@linkSave');
+// родители: CRUD и связи ведутся в auth-web, журнал — read-only зеркало
+// (ParentService::ensureSynced())
 
 // журнал занятий
 $r->get('/admin/lessons',          'AdminController@lessonsIndex');
@@ -59,15 +52,6 @@ $r->get('/admin/grades', 'AdminController@gradesIndex');
 
 // успеваемость по python-курсу (квизы python-web + задачи contest-web)
 $r->get('/admin/python-progress', 'AdminController@pythonProgress');
-
-// импорт
-$r->get('/admin/import', 'AdminController@importIndex');
-$r->post('/admin/import', 'AdminController@importProcess');
-$r->get('/admin/import/logs', 'AdminController@importLogs');
-
-// пользователи
-$r->get('/admin/users', 'AdminController@usersIndex');
-$r->post('/admin/users/reset', 'AdminController@userResetPassword');
 
 // ---- Ученик ----
 $r->get('/my',                  'StudentController@index');
@@ -97,5 +81,9 @@ $r->get('/api/v1/students',                 'ApiController@students');
 $r->get('/api/v1/quarters',                 'ApiController@quarters');
 $r->get('/api/v1/class-journal',            'ApiController@classJournal');
 $r->get('/api/v1/grades',                   'ApiController@grades');
+
+// Внутренний сервер-к-сервер эндпоинт: auth-web после изменения родителей
+// вызывает его с доверенного IP — мгновенный синк зеркала (ParentService)
+$r->post('/api/internal/parents-sync', 'ApiController@parentsSync');
 
 return $r;

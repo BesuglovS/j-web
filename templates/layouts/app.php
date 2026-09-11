@@ -24,12 +24,9 @@ $title = $title ?? config()['app_name'];
         <a href="/admin/classes" class="px-3 py-1.5 rounded hover:bg-slate-700">Классы</a>
         <a href="/admin/subjects" class="px-3 py-1.5 rounded hover:bg-slate-700">Предметы</a>
         <a href="/admin/students" class="px-3 py-1.5 rounded hover:bg-slate-700">Студенты</a>
-        <a href="/admin/parents" class="px-3 py-1.5 rounded hover:bg-slate-700">Родители</a>
         <a href="/admin/grades" class="px-3 py-1.5 rounded hover:bg-slate-700">Оценки</a>
         <a href="/admin/python-progress" class="px-3 py-1.5 rounded hover:bg-slate-700">Python-курс</a>
         <a href="/admin/quarters" class="px-3 py-1.5 rounded hover:bg-slate-700">Периоды</a>
-        <a href="/admin/import" class="px-3 py-1.5 rounded hover:bg-slate-700">Импорт</a>
-        <a href="/admin/users" class="px-3 py-1.5 rounded hover:bg-slate-700">Учётные</a>
       <?php elseif ($role === 'student'): ?>
         <a href="/my" class="px-3 py-1.5 rounded hover:bg-slate-700">Главная</a>
         <a href="/my/grades" class="px-3 py-1.5 rounded hover:bg-slate-700">Оценки</a>
@@ -66,15 +63,7 @@ $title = $title ?? config()['app_name'];
 
   <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
     <h2 class="text-xl font-semibold text-slate-800"><?php echo e($title ?? ''); ?></h2>
-    <?php if ($role === 'parent'): ?>
-    <form method="post" action="/password" class="flex items-center gap-2 bg-white border border-slate-200 rounded-lg p-1.5">
-      <?php echo csrf_field(); ?>
-      <input type="password" name="current_password" placeholder="Текущий пароль" class="px-2 py-1 text-sm border rounded">
-      <input type="password" name="new_password" placeholder="Новый пароль" class="px-2 py-1 text-sm border rounded" minlength="6">
-      <input type="password" name="confirm_password" placeholder="Повтор" class="px-2 py-1 text-sm border rounded" minlength="6">
-      <button class="px-3 py-1 text-sm rounded bg-slate-700 hover:bg-slate-600 text-white">Сменить пароль</button>
-    </form>
-    <?php elseif ($role === 'admin'): ?>
+    <?php if ($role === 'admin'): ?>
     <a href="<?php echo e(config()['auth_url']); ?>/index.php?page=admin-change-password" target="_blank" class="text-sm text-slate-500 hover:text-slate-700">Сменить пароль на портале</a>
     <?php endif; ?>
   </div>

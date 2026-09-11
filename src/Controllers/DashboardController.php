@@ -4,9 +4,8 @@ class DashboardController
 {
     public function index(): void
     {
-        if (!Auth::check()) {
-            redirect('/login');
-        }
+        // Гостя requireLogin отправит прямо на единый портал (с возвратом)
+        Auth::requireLogin();
         Auth::home();
     }
 }

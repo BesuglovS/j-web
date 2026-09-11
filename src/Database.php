@@ -74,6 +74,9 @@ class Database
 
         self::addColumn($pdo, 'students', 'external_id', 'INTEGER');
         self::addColumn($pdo, 'students', 'is_active', 'INTEGER NOT NULL DEFAULT 1');
+        // Родители — read-only зеркало auth-web (api/public_parents.php):
+        // external_id = id профиля parents в auth-web.
+        self::addColumn($pdo, 'parents', 'external_id', 'INTEGER');
         // Предмет привязан к классу; для существующих БД добавляем колонку
         // и проставляем класс из уже созданных занятий (без данных — NULL).
         self::addColumn($pdo, 'subjects', 'class_id', 'INTEGER');
@@ -102,6 +105,17 @@ class Database
         }
         if (!$hasStudentIdx) {
             $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_students_external ON students(external_id) WHERE external_id IS NOT NULL');
+        }
+        $parentIndexes = $pdo->query("PRAGMA index_list('parents')")->fetchAll();
+        $hasParentIdx = false;
+        foreach ($parentIndexes as $ix) {
+            if (($ix['name'] ?? '') === 'idx_parents_external') {
+                $hasParentIdx = true;
+                break;
+            }
+        }
+        if (!$hasParentIdx) {
+            $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_parents_external ON parents(external_id) WHERE external_id IS NOT NULL');
         }
     }
 

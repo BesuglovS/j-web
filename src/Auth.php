@@ -3,42 +3,20 @@
 /**
  * Аутентификация и проверка ролей.
  *
- * Два вида учётных записей:
- *  - администраторы и ученики авторизуются через единый портал
- *    auth.nayanovaacademy.ru (общая кука auth_session);
- *  - родители входят локально по логину/паролю из таблицы users.
+ * Все роли (администраторы, ученики, родители) авторизуются через единый
+ * портал auth.nayanovaacademy.ru (общая кука auth_session). Журнал
+ * хранит только локальные зеркала учётных записей без паролей
+ * (users: admin — без записей, student/parent — синхронизируются из
+ * auth-web), локального входа нет.
  */
 class Auth
 {
-    // -----------------------------------------------------------
-    // Единый портал (SSO): администраторы и ученики
-    // Реализация — общий AuthClient (shared/php/auth-client/AuthClient.php)
-    // -----------------------------------------------------------
-
     // -----------------------------------------------------------
     // Текущий пользователь
     // -----------------------------------------------------------
 
     public static function user(): ?array
     {
-        // Локальная сессия (родители) — приоритет.
-        // Устаревшие локальные сессии администраторов/учеников больше не
-        // принимаются: эти роли авторизуются только через единый портал.
-        if (isset($_SESSION['user_id'])) {
-            $st = Database::pdo()->prepare('SELECT * FROM users WHERE id = ?');
-            $st->execute([(int)$_SESSION['user_id']]);
-            $user = $st->fetch();
-            if (!$user) {
-                unset($_SESSION['user_id']);
-                return null;
-            }
-            if (!in_array($user['role'], ['admin', 'student'], true)) {
-                $user['is_sso'] = false;
-                return $user;
-            }
-            unset($_SESSION['user_id']);
-        }
-
         // SSO через auth-web (общий AuthClient)
         $sso = AuthClient::check();
         if ($sso === null) {
@@ -55,8 +33,8 @@ class Auth
             ];
         }
 
-        // Ученик: локальная привязка по логину (совпадает с логином auth-web)
-        $st = Database::pdo()->prepare("SELECT * FROM users WHERE role='student' AND LOWER(login)=LOWER(?) LIMIT 1");
+        // Ученик или родитель: локальная привязка по логину (совпадает с логином auth-web)
+        $st = Database::pdo()->prepare("SELECT * FROM users WHERE role IN ('student','parent') AND LOWER(login)=LOWER(?) LIMIT 1");
         $st->execute([(string)($sso['login'] ?? '')]);
         $user = $st->fetch();
         if ($user) {
@@ -74,7 +52,7 @@ class Auth
         ];
     }
 
-    /** Пользователь вошёл через единый портал? */
+    /** Пользователь вошёл через единый портал? (единственный способ входа) */
     public static function isSso(): bool
     {
         $u = self::user();
@@ -99,21 +77,8 @@ class Auth
     }
 
     // -----------------------------------------------------------
-    // Локальный вход (только родители)
+    // Выход
     // -----------------------------------------------------------
-
-    public static function attempt(string $login, string $password): bool
-    {
-        $st = Database::pdo()->prepare("SELECT * FROM users WHERE login = ? AND role='parent' LIMIT 1");
-        $st->execute([trim($login)]);
-        $user = $st->fetch();
-        if ($user && password_verify($password, $user['password_hash'])) {
-            session_regenerate_id(true);
-            $_SESSION['user_id'] = (int)$user['id'];
-            return true;
-        }
-        return false;
-    }
 
     public static function logout(): void
     {
@@ -126,13 +91,6 @@ class Auth
         session_destroy();
     }
 
-    public static function changePassword(int $userId, string $newPassword): void
-    {
-        $hash = password_hash($newPassword, PASSWORD_DEFAULT);
-        $st = Database::pdo()->prepare('UPDATE users SET password_hash = ? WHERE id = ?');
-        $st->execute([$hash, $userId]);
-    }
-
     // -----------------------------------------------------------
     // Гварды
     // -----------------------------------------------------------
@@ -143,7 +101,10 @@ class Auth
     public static function requireLogin(): void
     {
         if (!self::check()) {
-            redirect('/login');
+            // Гость — сразу на единый портал, после успешного входа
+            // вернём на исходную страницу (deep-link).
+            redirect(config()['auth_url'] . '/index.php?page=login&redirect='
+                . urlencode(base_url() . ($_SERVER['REQUEST_URI'] ?? '/')));
         }
     }
 

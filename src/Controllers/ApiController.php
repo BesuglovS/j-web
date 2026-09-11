@@ -479,4 +479,29 @@ class ApiController
         $st->execute($args);
         $this->json(['grades' => $st->fetchAll()]);
     }
+
+    /**
+     * Внутренний эндпоинт зеркала родителей: auth-web вызывает его
+     * сервер-к-сервер после каждого изменения в разделе «Родители»,
+     * чтобы зеркало в журнале обновлялось сразу, без ожидания TTL.
+     * Только POST без Origin с доверенного IP (см. internal_ips в config).
+     */
+    public function parentsSync(): void
+    {
+        $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+        $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+        $trusted = config()['internal_ips'] ?? [];
+        if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+            $this->json([]);
+        }
+        if ($origin !== '' || !in_array($ip, $trusted, true)) {
+            error_log('[api] rejected parents-sync: origin=' . ($origin ?: '-') . ' ip=' . $ip);
+            $this->json(['error' => 'Forbidden'], 403);
+        }
+        $report = ParentService::sync();
+        if ($report['errors']) {
+            $this->json(['error' => implode(' ', $report['errors']), 'report' => $report], 502);
+        }
+        $this->json(['ok' => true, 'report' => $report]);
+    }
 }

@@ -8,9 +8,11 @@
 
 1. **Проект PHP, а не JS.** Node-инструментарий только компилирует CSS и копирует `tracking-client.js`.
    Не пишите серверную логику на JS.
-2. **Классы и ученики — read-only зеркала auth-web.** Журнал НЕ создаёт/редактирует/удаляет их;
-   синхронизация аддитивная (upsert по `external_id`, никогда не удаляет — иначе осиротеют оценки/уроки).
-   Журнал владеет: предметы, четверти, уроки, оценки, ДЗ, замечания, родители и связи родитель–ученик.
+2. **Классы, ученики и родители — read-only зеркала auth-web.** Журнал НЕ создаёт/редактирует/удаляет их;
+   синхронизация аддитивная (upsert по `external_id`, никогда не удаляет связанные данные — иначе осиротеют
+   оценки/уроки). Родители и связи «родитель–ученик» ведутся ТОЛЬКО в auth-web (`admins/parents`,
+   `api/public_parents.php`) и синкаются через `ParentService`; зеркало локально имеет право только
+   удалять записи, исчезнувшие в auth-web. Журнал владеет: предметы, четверти, уроки, оценки, ДЗ, замечания.
 3. **`db/app.db` — живая прод-БД.** Не редактировать и не коммитить; регенерируется из `db/migration.sql`
    при первом запросе. Сброс = удалить файл.
 4. **`migration.sql` должен оставаться идемпотентным и безопасным к `;`**: `Database::migrate()` наивно
@@ -20,14 +22,19 @@
    1-байтовый `app.js` — норма. Свежий чекаут без сборки не деплоится (в шаблонах ссылка на
    `/assets/tracking-client.js`, который создаёт только сборка).
 6. **Каждая POST-форма обязана нести CSRF**: `csrf_field()` в шаблонах, `verify_csrf()`/`csrfGuard()` в контроллерах.
-7. **Auth-модель раздвоена**: admin и student входят через SSO auth-web (кука `auth_session`, локального
-   пароля нет); parent входит локально (`users.role='parent'`, bcrypt). Не ломайте разделение.
+7. **Auth-модель едина**: admin, student и parent входят через SSO auth-web (кука `auth_session`;
+   учётки родителей создаются в админке auth-web, локального входа и локальных паролей нет —
+   `Auth::attempt()`/`Auth::changePassword()` удалены, все роли резолвятся в `Auth::user()` по логину SSO.
 8. **Seed-хэш первого админа захардкожен** в `config.php` и `migration.sql` — менять их нужно ОБА и синхронно.
 9. **`AuthClient.php` и `assets-src/public/tracking-client.js` — копии канонических источников auth-web**
    (`na-web/shared/`); не расходиться, синхронизировать.
-10. **`src/`, `db/`, `templates/`, `data/` обязаны оставаться вне `public/`** (webroot). nginx блокирует
+10. **`src/`, `db/`, `templates/` обязаны оставаться вне `public/`** (webroot). nginx блокирует
     скрытые файлы и `.(sql|db|md|log)$`.
-11. **`.env` читается только `deploy.ps1`** — не печатать значения. `pass.md` (gitignored) хранит пароль админа — не коммитить.
+11. **Внутренний эндпоинт `/api/internal/parents-sync`** — только POST без `Origin` с доверенных IP
+    (`internal_ips` в `config.php`: прод — 79.143.31.184, dev — ещё 127.0.0.1/::1). Его вызывает auth-web
+    после каждого изменения раздела «Родители» для мгновенного синка зеркала `ParentService`. Не
+    расширять без обдумывания гейтов — тот же trust-модель, что в `api/public_*.php` auth-web.
+12. **`.env` читается только `deploy.ps1`** — не печатать значения. `pass.md` (gitignored) хранит пароль админа — не коммитить.
 
 ## 🔧 Команды
 
@@ -55,22 +62,24 @@ src/config.php             # пути, опции БД, session_name, csrf_key, 
 src/routes.php             # ~50 маршрутов; Router::dispatch() → Controller::action($params) (позиционный массив!)
 src/Router.php, Database.php, Auth.php, AuthClient.php, View.php, helpers.php
 src/Controllers/           # AdminController, AuthController, DashboardController, StudentController, ParentController
-src/Services/              # GroupService, StudentService, GradeService, ImportService
+src/Services/              # GroupService, StudentService, ParentService, GradeService
 src/Models/                # ПУСТО и не используется — не подразумевайте слой моделей
 db/migration.sql           # схема (идемпотентная); db/app.db — живая БД (gitignored)
-templates/                 # plain-PHP шаблоны (Tailwind): layouts/ app.php guest.php; auth/, admin/, my/, parent/
+templates/                 # plain-PHP шаблоны (Tailwind): layouts/ app.php; admin/, my/, parent/
+                           # (страницы входа нет: гостя requireLogin() отправляет сразу на портал auth-web)
 assets-src/                # Vite root: entries/ (app.js, app.css), public/tracking-client.js, vite.config.js
-data/                      # CSV-шаблоны импорта (parents.csv, links.csv)
 runtime/                   # логи/tmp (gitignored; на сервере обязана существовать)
 deploy.ps1, j.nayanovaacademy.ru (nginx)
 ```
 
 ## 📊 Схема БД (ключевое)
 
-`users` (login UNIQUE, password_hash, role admin|student|parent), `classes` (external_id = auth-web group id),
-`subjects` (привязан к class), `students` (external_id = auth-web user id), `parents`, `student_parent`,
+`users` (login UNIQUE, password_hash пустой/не используется, role admin|student|parent),
+`classes` (external_id = auth-web group id),
+`subjects` (привязан к class), `students` (external_id = auth-web user id),
+`parents` (external_id = id профиля parents auth-web — read-only зеркало), `student_parent`,
 `quarters`, `lessons`, `homeworks`, `marks` (1–5; `UNIQUE(student_id, lesson_id, work_type)` + upsert),
-`homework_submissions`, `lesson_remarks`, `import_logs`.
+`homework_submissions`, `lesson_remarks`.
 
 ## 💻 Конвенции кода
 
@@ -102,4 +111,3 @@ deploy.ps1, j.nayanovaacademy.ru (nginx)
 - `ParentController::child()` явно проверяет принадлежность ребёнка родителю (иначе 403) — не ослаблять.
 - Разлогин SSO-пользователей редиректит на портал `/api/logout.php`.
 - Рендер через `extract()` — избегать коллизий имён между данными страницы и переменными лейаута.
-- CSV-импорт (`data/parents.csv`, `data/links.csv`): разделители `;` или `,`; ученики НЕ импортируются.

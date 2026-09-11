@@ -3,7 +3,6 @@ $student = $student ?? [];
 $parents = $parents ?? [];
 $grades = $grades ?? [];
 $remarks = $remarks ?? [];
-$allParents = $allParents ?? [];
 $allGrades = $allGrades ?? [];
 $name = trim($student['last_name'].' '.$student['first_name'].' '.$student['middle_name']);
 ?>
@@ -19,28 +18,13 @@ $name = trim($student['last_name'].' '.$student['first_name'].' '.$student['midd
 <div class="grid lg:grid-cols-2 gap-6 mt-6">
   <div class="card p-6">
     <h4 class="font-semibold mb-3">Родители</h4>
-    <form method="post" action="/admin/links/save" class="flex gap-2 items-center mb-3">
-      <?php echo csrf_field(); ?>
-      <input type="hidden" name="student_id" value="<?php echo (int)$student['id']; ?>">
-      <select name="parent_id" class="input" required>
-        <option value="">— выберите родителя —</option>
-        <?php foreach ($allParents as $p): ?>
-          <option value="<?php echo (int)$p['id']; ?>"><?php echo e(trim($p['last_name'].' '.$p['first_name'])); ?></option>
-        <?php endforeach; ?>
-      </select>
-      <button class="btn-primary">Связать</button>
-    </form>
+    <p class="text-xs text-slate-400 mb-2">Привязка ведётся на едином портале авторизации (раздел «Родители»).</p>
     <?php foreach ($parents as $p): ?>
-      <div class="flex items-center justify-between py-1 border-b">
+      <div class="py-1 border-b">
         <span><?php echo e(trim($p['last_name'].' '.$p['first_name'].' '.$p['middle_name'])); ?></span>
-        <form method="post" action="/admin/links/save" class="inline">
-          <?php echo csrf_field(); ?>
-          <input type="hidden" name="student_id" value="<?php echo (int)$student['id']; ?>">
-          <input type="hidden" name="detach" value="<?php echo (int)$p['id']; ?>">
-          <button class="text-red-600 text-sm">Убрать</button>
-        </form>
       </div>
     <?php endforeach; ?>
+    <?php if (!$parents): ?><p class="text-slate-400 text-sm">Родители не привязаны.</p><?php endif; ?>
   </div>
 
   <div class="card p-6">

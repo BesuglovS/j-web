@@ -5,6 +5,8 @@ class ParentController
     private function boot(): void
     {
         Auth::requireRole('parent');
+        // родители — read-only зеркало auth-web, подтягиваем перед показом
+        ParentService::ensureSynced();
     }
 
     private function parent(): ?array

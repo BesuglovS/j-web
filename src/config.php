@@ -12,7 +12,6 @@ return [
     'migration_file' => dirname(__DIR__) . '/db/migration.sql',
     'runtime_path'   => dirname(__DIR__) . '/runtime',
     'templates_path' => dirname(__DIR__) . '/templates',
-    'data_path'      => dirname(__DIR__) . '/data',
 
     // БД
     'db' => [
@@ -34,6 +33,22 @@ return [
     'auth_users_url' => 'https://auth.nayanovaacademy.ru/api/public_users.php',
     // Endpoint принадлежности пользователей к группам auth-web
     'auth_memberships_url' => 'https://auth.nayanovaacademy.ru/api/user_groups.php',
+    // Endpoint родителей auth-web (профили + связи родитель–ребёнок) —
+    // единый источник, журнал держит только read-only зеркало.
+    // Dev-исключение: локальный auth-web (только при localhost-сервере).
+    'auth_parents_url' => preg_match('/^(localhost|127\.0\.0\.1)(:\d+)?$/',
+        strtolower((string)($_SERVER['HTTP_HOST'] ?? '')))
+        ? 'http://127.0.0.1:8080/api/public_parents.php'
+        : 'https://auth.nayanovaacademy.ru/api/public_parents.php',
+
+    // Доверенные серверы для внутренних сервер-к-сервер эндпоинтов
+    // (/api/internal/*): уведомление о зеркале родителей приходит с того же
+    // сервера, что и auth-web. Локально (dev) разрешён ещё 127.0.0.1 —
+    // как dev-исключение origins в auth-web (на проде HTTP_HOST всегда
+    // *.nayanovaacademy.ru, и loopback в список не попадает).
+    'internal_ips' => preg_match('/^(localhost|127\.0\.0\.1)(:\d+)?$/',
+        strtolower((string)($_SERVER['HTTP_HOST'] ?? '')))
+        ? ['79.143.31.184', '127.0.0.1', '::1'] : ['79.143.31.184'],
 
     // Внешние курсы: уроки/квизы python-web и задачи contest-web
     'python_admin_url' => 'https://python.nayanovaacademy.ru/sandbox/admin_quiz.php',
