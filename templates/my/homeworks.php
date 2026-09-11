@@ -35,6 +35,12 @@ $statusLabels = ['done'=>'Выполнено','partial'=>'Частично','not
               </select>
               <input name="comment" class="input" placeholder="Комментарий (необязательно)" value="<?php echo e($h['my_comment'] ?? ''); ?>">
               <button class="btn-secondary">Сохранить</button>
+              <?php if ($cur): ?>
+                <button type="submit" name="status" value="reset"
+                        class="text-sm text-red-600 hover:underline mt-1" <?php echo $cur ? '' : 'disabled'; ?>>
+                  Убрать статус
+                </button>
+              <?php endif; ?>
             </form>
           </details>
         </td>

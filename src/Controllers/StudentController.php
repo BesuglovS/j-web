@@ -23,20 +23,21 @@ class StudentController
         }
         $sid = (int)$s['id'];
         $pdo = Database::pdo();
-        $lastMarks = $pdo->prepare('SELECT m.value, m.work_type, m.comment, l.date, sub.name AS subject FROM marks m JOIN lessons l ON l.id=m.lesson_id JOIN subjects sub ON sub.id=l.subject_id WHERE m.student_id=? ORDER BY l.date DESC, l.id DESC LIMIT 10');
+        $lastMarks = $pdo->prepare('SELECT m.value, m.work_type, m.comment, l.date, sub.name AS subject FROM marks m JOIN lessons l ON l.id=m.lesson_id JOIN subjects sub ON sub.id=l.subject_id WHERE m.student_id=? ORDER BY l.date DESC, l.id DESC');
         $lastMarks->execute([$sid]);
         $pendingHw = $pdo->prepare('SELECT hw.*, sub.name AS subject, l.date AS lesson_date,
                     (SELECT hws.status FROM homework_submissions hws WHERE hws.homework_id=hw.id AND hws.student_id=?) AS my_status
                     FROM homeworks hw JOIN lessons l ON l.id=hw.lesson_id JOIN subjects sub ON sub.id=l.subject_id
-                    WHERE l.class_id=? ORDER BY COALESCE(hw.due_date,l.date) DESC LIMIT 10');
+                    WHERE l.class_id=? ORDER BY COALESCE(hw.due_date,l.date) DESC');
         $pendingHw->execute([$sid, $s['class_id']]);
-        $remarks = $pdo->prepare('SELECT r.text, r.created_at, l.date, sub.name AS subject FROM lesson_remarks r JOIN lessons l ON l.id=r.lesson_id JOIN subjects sub ON sub.id=l.subject_id WHERE r.student_id=? ORDER BY r.created_at DESC LIMIT 5');
+        $remarks = $pdo->prepare('SELECT r.text, r.created_at, l.date, sub.name AS subject FROM lesson_remarks r JOIN lessons l ON l.id=r.lesson_id JOIN subjects sub ON sub.id=l.subject_id WHERE r.student_id=? ORDER BY r.created_at DESC');
         $remarks->execute([$sid]);
         return View::render('my/index', [
             'student' => $s,
             'lastMarks' => $lastMarks->fetchAll(),
             'pendingHw' => $pendingHw->fetchAll(),
             'remarks' => $remarks->fetchAll(),
+            'progress' => StudentProgressService::mySummary(isset($_GET['refresh']) && $_GET['refresh'] === '1'),
         ]);
     }
 
@@ -81,8 +82,15 @@ class StudentController
         $hwId = (int)$params[0];
         $status = (string)($_POST['status'] ?? 'done');
         $comment = trim((string)($_POST['comment'] ?? ''));
-        if (!in_array($status, ['done','partial','not_done'])) $status = 'done';
         $pdo = Database::pdo();
+        if ($status === 'reset') {
+            // убрать статус = удалить свою отметку о выполнении
+            $pdo->prepare('DELETE FROM homework_submissions WHERE homework_id=? AND student_id=?')
+                ->execute([$hwId, $sid['id']]);
+            flash_set('my_ok', 'Статус убран.');
+            redirect('/my/homeworks');
+        }
+        if (!in_array($status, ['done','partial','not_done'])) $status = 'done';
         $exists = $pdo->prepare('SELECT id FROM homework_submissions WHERE homework_id=? AND student_id=?');
         $exists->execute([$hwId, $sid['id']]);
         if ($exists->fetch()) {

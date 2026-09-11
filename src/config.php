@@ -38,7 +38,13 @@ return [
     // Внешние курсы: уроки/квизы python-web и задачи contest-web
     'python_admin_url' => 'https://python.nayanovaacademy.ru/sandbox/admin_quiz.php',
     'contest_admin_url' => 'https://contest.nayanovaacademy.ru/index.php?page=api&endpoint=admin_class_progress',
+    // Эндпоинты «мой прогресс» (доступны ученикам под их SSO-сессией)
+    'python_progress_url' => 'https://python.nayanovaacademy.ru/sandbox/progress.php',
+    'contest_my_progress_url' => 'https://contest.nayanovaacademy.ru/index.php?page=api&endpoint=my_progress',
     'python_site_url' => 'https://python.nayanovaacademy.ru',
+    // Метаданные уроков (номер → страница) — тот же файл, что собирает python-web
+    'python_lessons_url' => 'https://python.nayanovaacademy.ru/lessons.json',
+    'contest_site_url' => 'https://contest.nayanovaacademy.ru',
     // Всего уроков python-курса (для диапазона отображения в успеваемости)
     'python_max_lessons' => 50,
     // Соответствие урок python-курса → ID контеста в contest-web (источник истины — lessons.json,
