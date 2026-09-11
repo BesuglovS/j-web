@@ -19,6 +19,9 @@ class AdminController
     public function index(): string
     {
         $this->boot();
+        // Зеркало родителей обновляем вместе с дашбордом: счётчик «Родители»
+        // должен получать данные из auth-web, а не только на страницах синков.
+        ParentService::ensureSynced();
         $pdo = Database::pdo();
         $stats = [
             'classes'  => (int)$pdo->query('SELECT COUNT(*) FROM classes')->fetchColumn(),
