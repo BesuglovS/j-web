@@ -47,11 +47,17 @@ $name = trim($student['last_name'].' '.$student['first_name'].' '.$student['midd
         <thead><tr><th>Дата</th><th>Предмет</th><th>Вид</th><th>Оценка</th></tr></thead>
         <tbody>
         <?php foreach ($grades as $g): ?>
-          <tr>
+          <?php $stale = !(int)($g['is_current'] ?? 1); ?>
+          <tr class="<?php echo $stale ? 'text-slate-300' : ''; ?>">
             <td><?php echo e($g['date']); ?></td>
             <td><?php echo e($g['subject']); ?></td>
             <td><?php echo e($g['work_type']); ?></td>
-            <td class="font-semibold"><?php echo (int)$g['value']; ?></td>
+            <td>
+              <span class="font-semibold"><?php echo (int)$g['value']; ?></span>
+              <?php if ($stale): ?>
+                <span class="block text-[10px]"><?php echo trim((string)$g['comment']) !== '' ? e((string)$g['comment']) : 'переписано'; ?></span>
+              <?php endif; ?>
+            </td>
           </tr>
         <?php endforeach; ?>
         <?php if (!$grades): ?><tr><td colspan="4" class="text-slate-400 text-center py-4">Нет оценок</td></tr><?php endif; ?>

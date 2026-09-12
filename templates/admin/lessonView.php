@@ -47,14 +47,25 @@ $workTypes = ['lesson' => 'Урок', 'control' => 'Контроль', 'homework
           <tr>
             <td class="sticky left-0 bg-white font-medium whitespace-nowrap"><?php echo e($name); ?></td>
             <?php foreach ($workTypes as $wt => $label): ?>
-              <?php $m = $marksMap[$s['id'].'|'.$wt] ?? null; ?>
+              <?php
+                $attempts = $marksMap[$s['id'].'|'.$wt] ?? [];
+                $mCurrent = null;
+                foreach ($attempts as $a) { if ((int)$a['is_current']) { $mCurrent = $a; break; } }
+                if ($mCurrent === null && $attempts) { $mCurrent = $attempts[0]; }
+              ?>
               <td class="text-center">
                 <input type="number" min="1" max="5" name="marks[<?php echo (int)$s['id']; ?>][<?php echo e($wt); ?>]"
-                       value="<?php echo $m ? e((string)$m['value']) : ''; ?>" placeholder="—"
+                       value="<?php echo $mCurrent ? e((string)$mCurrent['value']) : ''; ?>" placeholder="—"
                        class="w-12 text-center border rounded py-1">
                 <input name="comments[<?php echo (int)$s['id']; ?>][<?php echo e($wt); ?>]"
-                       value="<?php echo $m ? e((string)($m['comment'] ?? '')) : ''; ?>"
+                       value="<?php echo $mCurrent ? e((string)($mCurrent['comment'] ?? '')) : ''; ?>"
                        placeholder="..." class="w-full text-xs border rounded px-1 py-0.5">
+                <?php foreach ($attempts as $a): ?>
+                  <?php if ($mCurrent !== null && (int)$a['id'] === (int)$mCurrent['id']) continue; ?>
+                  <div class="text-[10px] text-slate-300 line-through"<?php echo trim((string)$a['comment']) !== '' ? ' title="переписано: '.e((string)$a['comment']).'"' : ''; ?>>
+                    <?php echo (int)$a['value']; ?>
+                  </div>
+                <?php endforeach; ?>
               </td>
             <?php endforeach; ?>
           </tr>
@@ -64,7 +75,7 @@ $workTypes = ['lesson' => 'Урок', 'control' => 'Контроль', 'homework
     </div>
     <div class="p-3 border-t bg-slate-50 text-right">
       <button class="btn-primary">Сохранить оценки</button>
-      <span class="text-xs text-slate-400 ml-2">Пустое поле — оценка не ставится/снимается.</span>
+      <span class="text-xs text-slate-400 ml-2">Пустое поле — оценка не ставится/снимается. Старые попытки переписывания показаны серым (появляются в мобильном приложении).</span>
     </div>
   </form>
 </div>

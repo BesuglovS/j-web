@@ -84,6 +84,36 @@ class Database
         self::addColumn($pdo, 'classes', 'external_id', 'INTEGER');
         // Минуты опоздания для статуса 'late' (мобильное приложение).
         self::addColumn($pdo, 'attendance', 'late_minutes', 'INTEGER');
+        // Переписывание оценок: каждая строка marks — попытка в группе
+        // (student, предмет урока, work_type). is_retake=1 — попытка переписывания
+        // (привязана к уроку исходной оценки); attempt_date — машиночитаемая дата
+        // попытки (переписывания — дата пересдачи); is_current=1 — итоговая
+        // (последняя по attempt_date) попытка группы, только она участвует в
+        // средних. При добавлении колонок в существующую БД все оценки
+        // считаем итоговыми.
+        self::addColumn($pdo, 'marks', 'is_retake', 'INTEGER NOT NULL DEFAULT 0');
+        self::addColumn($pdo, 'marks', 'is_current', 'INTEGER NOT NULL DEFAULT 1');
+        // Не в migration.sql: для существующих БД индекс создаётся только здесь,
+        // после добавления колонок (иначе миграция падает на старой схеме).
+        $pdo->exec('CREATE INDEX IF NOT EXISTS idx_marks_current ON marks(student_id, is_current)');
+        // Машиночитаемая дата попытки: обычная оценка — дата урока, переписывание —
+        // дата пересдачи (приоритет «последней» попытки — по attempt_date).
+        if (self::addColumn($pdo, 'marks', 'attempt_date', 'TEXT')) {
+            // Бэкфилл: всем строкам дата урока; у переписываний — первое ДД.ММ.ГГГГ
+            // из comment (раньше дата пересдачи вводилась в комментарий).
+            $pdo->exec(
+                "UPDATE marks SET attempt_date = (SELECT l.date FROM lessons l WHERE l.id = marks.lesson_id)
+                 WHERE attempt_date IS NULL OR attempt_date = ''"
+            );
+            $rows = $pdo->query("SELECT id, comment FROM marks WHERE is_retake = 1")->fetchAll();
+            foreach ($rows as $r) {
+                $date = \MarkService::parseDateFromComment((string)($r['comment'] ?? ''));
+                if ($date !== null) {
+                    $upd = $pdo->prepare('UPDATE marks SET attempt_date=? WHERE id=?');
+                    $upd->execute([$date, (int)$r['id']]);
+                }
+            }
+        }
         $indexes = $pdo->query("PRAGMA index_list('classes')")->fetchAll();
         $hasClassIdx = false;
         foreach ($indexes as $ix) {
@@ -120,21 +150,19 @@ class Database
     }
 
     /**
-     * Добавляет колонку, если её ещё нет (идемпотентно).
+     * Добавляет колонку, если её ещё нет (идемпотентно). Возвращает true,
+     * если колонка была добавлена при этом вызове.
      */
-    private static function addColumn(PDO $pdo, string $table, string $column, string $type): void
+    private static function addColumn(PDO $pdo, string $table, string $column, string $type): bool
     {
-        $exists = false;
         $cols = $pdo->query('PRAGMA table_info(' . $table . ')');
         foreach ($cols as $c) {
             if ($c['name'] === $column) {
-                $exists = true;
-                break;
+                return false;
             }
         }
-        if (!$exists) {
-            $pdo->exec('ALTER TABLE ' . $table . ' ADD COLUMN ' . $column . ' ' . $type);
-        }
+        $pdo->exec('ALTER TABLE ' . $table . ' ADD COLUMN ' . $column . ' ' . $type);
+        return true;
     }
 
     /**

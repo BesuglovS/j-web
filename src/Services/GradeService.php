@@ -39,9 +39,10 @@ class GradeService
         // по каждому предмету (или одному) получаем оценки всех студентов класса за период
 foreach ($subjects as $sub) {
             if ($subjectId && (int)$sub['id'] !== $subjectId) continue;
+            // В средних участвуют только итоговые попытки (последнее переписывание)
             $sql = 'SELECT m.student_id, m.value, m.work_type FROM marks m
                     JOIN lessons l ON l.id=m.lesson_id
-                    WHERE l.subject_id=:sid AND l.class_id=:cid';
+                    WHERE l.subject_id=:sid AND l.class_id=:cid AND m.is_current=1';
             $ar = [':sid'=>$sub['id'], ':cid'=>$classId];
             if ($from) { $sql .= ' AND l.date >= :from'; $ar[':from']=$from; }
             if ($to)   { $sql .= ' AND l.date <= :to';   $ar[':to']=$to; }
@@ -58,7 +59,7 @@ foreach ($subjects as $sub) {
     public static function averageForSubject(int $studentId, int $subjectId, ?string $from=null, ?string $to=null): ?float
     {
         $sql = 'SELECT AVG(m.value) FROM marks m JOIN lessons l ON l.id=m.lesson_id
-                WHERE m.student_id=:sid AND l.subject_id=:sub';
+                WHERE m.student_id=:sid AND l.subject_id=:sub AND m.is_current=1';
         $ar = [':sid'=>$studentId, ':sub'=>$subjectId];
         if ($from) { $sql .= ' AND l.date >= :from'; $ar[':from']=$from; }
         if ($to)   { $sql .= ' AND l.date <= :to';   $ar[':to']=$to; }
@@ -69,12 +70,14 @@ foreach ($subjects as $sub) {
     }
 
     /**
-     * Все оценки ученика сгруппированные по предмету (среднее + список).
+     * Все попытки оценок ученика, сгруппированные по предмету.
+     * Среднее — только по итоговым попыткам (последнее переписывание);
+     * в items флаг is_current для отображения старых попыток серым.
      */
     public static function perSubject(int $studentId): array
     {
         $st = Database::pdo()->prepare(
-            'SELECT sub.name AS subject, sub.short_name, m.value, m.work_type, m.comment, l.date, l.topic
+            'SELECT sub.name AS subject, sub.short_name, m.value, m.work_type, m.comment, m.is_retake, m.is_current, l.date, l.topic
              FROM marks m
              JOIN lessons l ON l.id=m.lesson_id
              JOIN subjects sub ON sub.id=l.subject_id
@@ -87,7 +90,9 @@ foreach ($subjects as $sub) {
         foreach ($rows as $m) {
             $s = $m['subject'];
             if (!isset($grouped[$s])) $grouped[$s] = ['values'=>[], 'items'=>[], 'avg'=>null];
-            $grouped[$s]['values'][] = (int)$m['value'];
+            if ((int)$m['is_current']) {
+                $grouped[$s]['values'][] = (int)$m['value'];
+            }
             $grouped[$s]['items'][] = $m;
         }
         foreach ($grouped as $s => &$g) {

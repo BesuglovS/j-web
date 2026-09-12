@@ -206,11 +206,11 @@ class AdminController
         $parents = $pdo->prepare('SELECT p.* FROM parents p JOIN student_parent sp ON sp.parent_id=p.id WHERE sp.student_id=?');
         $parents->execute([$id]);
         $grades = $pdo->prepare(
-            'SELECT sub.name AS subject, l.date, m.value, m.work_type, m.comment
+            'SELECT sub.name AS subject, l.date, m.value, m.work_type, m.comment, m.is_retake, m.is_current
              FROM marks m
              JOIN lessons l ON l.id=m.lesson_id
              JOIN subjects sub ON sub.id=l.subject_id
-             WHERE m.student_id=? ORDER BY l.date DESC, l.id DESC'
+             WHERE m.student_id=? ORDER BY l.date DESC, l.id DESC, m.id'
         );
         $grades->execute([$id]);
         $remarks = $pdo->prepare(
@@ -222,10 +222,11 @@ class AdminController
         );
         $remarks->execute([$id]);
 
+        // Средние по предметам — только итоговые попытки (последнее переписывание)
         $allGrades = $pdo->prepare(
             'SELECT sub.name AS subject, ROUND(AVG(m.value),2) AS avg, COUNT(*) AS cnt
              FROM marks m JOIN lessons l ON l.id=m.lesson_id JOIN subjects sub ON sub.id=l.subject_id
-             WHERE m.student_id=? GROUP BY sub.id ORDER BY sub.name'
+             WHERE m.student_id=? AND m.is_current=1 GROUP BY sub.id ORDER BY sub.name'
         );
         $allGrades->execute([$id]);
 
@@ -448,10 +449,6 @@ class AdminController
              ON CONFLICT(student_id, lesson_id) DO UPDATE SET status=excluded.status, comment=excluded.comment'
         );
         $attDelete = $pdo->prepare('DELETE FROM attendance WHERE student_id=? AND lesson_id=?');
-        $markUpsert = $pdo->prepare(
-            'INSERT INTO marks (student_id, lesson_id, value, work_type, comment) VALUES (?,?,?,?,?)'
-        );
-        $markDelete = $pdo->prepare('DELETE FROM marks WHERE student_id=? AND lesson_id=? AND work_type=?');
         $remarkInsert = $pdo->prepare('INSERT INTO lesson_remarks (lesson_id, student_id, text) VALUES (?,?,?)');
         $remarkDelete = $pdo->prepare('DELETE FROM lesson_remarks WHERE id=? AND lesson_id=?');
 
@@ -481,11 +478,10 @@ class AdminController
                     continue;
                 }
                 if ($v === '') {
-                    $markDelete->execute([$sid, $lessonId, $workType]);
+                    MarkService::saveBase($sid, $lessonId, $workType, null);
                 } elseif (is_numeric($v) && (int)$v >= 1 && (int)$v <= 5) {
-                    // Без UNIQUE-ограничения: удаляем старую оценку перед вставкой
-                    $markDelete->execute([$sid, $lessonId, $workType]);
-                    $markUpsert->execute([$sid, $lessonId, (int)$v, $workType, $comment]);
+                    // Попытки переписывания (is_retake=1) этого ученика не затрагиваются
+                    MarkService::saveBase($sid, $lessonId, $workType, (int)$v, $comment);
                 }
             }
         }
@@ -600,11 +596,13 @@ class AdminController
         $students->execute([$lesson['class_id']]);
         $students = $students->fetchAll();
 
+        // Все попытки клетки (ученик|work_type): переписывания привязаны
+        // к уроку исходной оценки, поэтому в клетке может быть несколько строк
         $marksMap = [];
-        $st = $pdo->prepare('SELECT * FROM marks WHERE lesson_id=?');
+        $st = $pdo->prepare('SELECT * FROM marks WHERE lesson_id=? ORDER BY id');
         $st->execute([$id]);
         foreach ($st->fetchAll() as $m) {
-            $marksMap[$m['student_id'] . '|' . $m['work_type']] = $m;
+            $marksMap[$m['student_id'] . '|' . $m['work_type']][] = $m;
         }
 
         $remarksMap = [];
@@ -649,12 +647,10 @@ class AdminController
                     continue;
                 }
                 if ($v === '') {
-                    $pdo->prepare('DELETE FROM marks WHERE student_id=? AND lesson_id=? AND work_type=?')->execute([$studentId, $lessonId, $workType]);
+                    MarkService::saveBase($studentId, $lessonId, $workType, null);
                 } elseif (is_numeric($v) && (int)$v >= 1 && (int)$v <= 5) {
-                    // Без UNIQUE-ограничения: удаляем старую оценку перед вставкой
-                    $pdo->prepare('DELETE FROM marks WHERE student_id=? AND lesson_id=? AND work_type=?')->execute([$studentId, $lessonId, $workType]);
-                    $pdo->prepare('INSERT INTO marks (student_id, lesson_id, value, work_type, comment) VALUES (?,?,?,?,?)')
-                        ->execute([$studentId, $lessonId, (int)$v, $workType, $comment]);
+                    // Попытки переписывания (is_retake=1) этого ученика не затрагиваются
+                    MarkService::saveBase($studentId, $lessonId, $workType, (int)$v, $comment);
                 }
             }
         }

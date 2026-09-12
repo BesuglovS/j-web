@@ -21,7 +21,9 @@ $statusLabels = ['done'=>'Выполнено','partial'=>'Частично','not
       <span class="text-sm">Среднее: <b><?php echo e((string)$g['avg']); ?></b></span>
       <span class="flex flex-wrap gap-1">
         <?php foreach ($g['items'] as $m): ?>
-          <span class="inline-flex px-1.5 py-0.5 rounded text-xs font-semibold <?php echo (int)$m['value']>=4?'bg-emerald-100 text-emerald-800':((int)$m['value']===3?'bg-amber-100 text-amber-800':'bg-red-100 text-red-800'); ?>"><?php echo (int)$m['value']; ?></span>
+          <?php $stale = !(int)($m['is_current'] ?? 1); ?>
+          <span class="inline-flex px-1.5 py-0.5 rounded text-xs font-semibold <?php echo $stale ? 'bg-slate-100 text-slate-300 line-through' : ((int)$m['value']>=4?'bg-emerald-100 text-emerald-800':((int)$m['value']===3?'bg-amber-100 text-amber-800':'bg-red-100 text-red-800')); ?>"
+                title="<?php echo e(trim((string)($m['comment'] ?? '')) ?: 'оценка'); ?>"><?php echo (int)$m['value']; ?></span>
         <?php endforeach; ?>
       </span>
     </div>

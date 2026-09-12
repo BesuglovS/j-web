@@ -111,14 +111,25 @@ CREATE TABLE IF NOT EXISTS homeworks (
 
 -- Несколько оценок за урок: без UNIQUE(student_id, lesson_id, work_type).
 -- Для существующих БД таблица пересоздаётся программно в Database::migrate().
+-- Переписывание оценки: каждая строка — попытка в группе (student, предмет урока,
+-- work_type). is_retake=1 — попытка переписывания (привязана к уроку исходной
+-- оценки, дата пересдачи — дополнительно в comment). attempt_date — машиночитаемая
+-- дата попытки: у обычной оценки это дата урока, у переписывания — введённая
+-- вручную дата пересдачи («последняя попытка» = максимальная attempt_date).
+-- is_current=1 — итоговая (последняя) попытка группы, только она участвует
+-- в средних. Все три колонки для существующих БД добавляются программно
+-- в Database::migrate().
 CREATE TABLE IF NOT EXISTS marks (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    student_id INTEGER NOT NULL,
-    lesson_id  INTEGER NOT NULL,
-    value      INTEGER CHECK (value BETWEEN 1 AND 5),
-    work_type  TEXT NOT NULL DEFAULT 'lesson',
-    comment    TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id   INTEGER NOT NULL,
+    lesson_id    INTEGER NOT NULL,
+    value        INTEGER CHECK (value BETWEEN 1 AND 5),
+    work_type    TEXT NOT NULL DEFAULT 'lesson',
+    comment      TEXT,
+    attempt_date TEXT,
+    is_retake    INTEGER NOT NULL DEFAULT 0,
+    is_current   INTEGER NOT NULL DEFAULT 1,
+    created_at   TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
     FOREIGN KEY (lesson_id)  REFERENCES lessons(id)  ON DELETE CASCADE
 );
@@ -185,6 +196,8 @@ CREATE INDEX IF NOT EXISTS idx_lessons_class    ON lessons(class_id);
 CREATE INDEX IF NOT EXISTS idx_lessons_subject  ON lessons(subject_id);
 CREATE INDEX IF NOT EXISTS idx_marks_lesson     ON marks(lesson_id);
 CREATE INDEX IF NOT EXISTS idx_marks_student    ON marks(student_id);
+-- idx_marks_current создаётся программно в Database::migrate() (после
+-- идемпотентного добавления колонок is_retake/is_current).
 CREATE INDEX IF NOT EXISTS idx_hw_lesson        ON homeworks(lesson_id);
 CREATE INDEX IF NOT EXISTS idx_hws_homework     ON homework_submissions(homework_id);
 CREATE INDEX IF NOT EXISTS idx_hws_student      ON homework_submissions(student_id);

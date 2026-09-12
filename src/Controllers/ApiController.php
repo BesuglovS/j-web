@@ -110,11 +110,25 @@ class ApiController
         $students = $students->fetchAll();
 
         $marks = [];
-        $st = $pdo->prepare('SELECT * FROM marks WHERE lesson_id=? ORDER BY id');
+        $st = $pdo->prepare('SELECT * FROM marks WHERE lesson_id=? ORDER BY attempt_date, id');
         $st->execute([$id]);
         foreach ($st->fetchAll() as $m) {
             // Несколько оценок за урок: список на ученика
             $marks[$m['student_id']][] = $m;
+        }
+
+        // Текущие (итоговые) попытки учеников класса по предмету урока:
+        // UI переписывания показывает «за этот тип уже есть оценка и когда»
+        $currentMarks = [];
+        $st = $pdo->prepare(
+            'SELECT m.id, m.student_id, m.value, m.work_type, m.comment, m.is_retake, m.attempt_date, l.id AS lesson_id, l.date AS lesson_date
+             FROM marks m JOIN lessons l ON l.id=m.lesson_id
+             WHERE l.subject_id=? AND m.is_current=1
+             ORDER BY m.id'
+        );
+        $st->execute([$lesson['subject_id']]);
+        foreach ($st->fetchAll() as $m) {
+            $currentMarks[$m['student_id']][] = $m;
         }
 
         $remarks = [];
@@ -159,6 +173,7 @@ class ApiController
             'lesson'     => $lesson,
             'students'   => $students,
             'marks'      => $marks,
+            'current_marks' => $currentMarks,
             'remarks'    => $remarks,
             'attendance' => $attendance,
             'homeworks'  => $homeworks,
@@ -198,16 +213,50 @@ class ApiController
         $lessonId = (int)$params[0];
         $data = $this->input();
         $marks = $data['marks'] ?? [];
+        $removeIds = $data['remove_mark_ids'] ?? [];
+        $subjectId = MarkService::lessonSubject($lessonId);
         $pdo = Database::pdo();
 
-        // Формат: marks[<student_id>] = [{value: 2..5, work_type: 'lesson'}, ...]
-        // Список ученика полностью заменяет его оценки за урок
-        // (пустой список удаляет все). Допускаются только оценки 2–5.
+        // Формат: marks[<student_id>] = [
+        //   {value: 2..5, work_type, comment, id?, retake?}, ...
+        // ]
+        // Обычная запись заменяет базовые (is_retake=0) оценки ученика за урок
+        // (пустой список удаляет их). Запись с retake=1 — попытка переписывания:
+        // привязывается к уроку исходной оценки (MarkService), дата пересдачи —
+        // в comment; id>0 — обновление существующей попытки.
+        // remove_mark_ids — явное удаление попыток (переписываний).
+        foreach ((array)$removeIds as $sid => $ids) {
+            MarkService::deleteByIds((array)$ids, (int)$sid);
+        }
+
         foreach ($marks as $studentId => $entries) {
             $studentId = (int)$studentId;
-            $pdo->prepare('DELETE FROM marks WHERE student_id=? AND lesson_id=?')
-                ->execute([$studentId, $lessonId]);
-            foreach ((array)$entries as $entry) {
+            $entries = (array)$entries;
+            // Типы работ обычных (не переписывание) записей списка
+            $baseTypes = [];
+            foreach ($entries as $entry) {
+                $entry = (array)$entry;
+                if (!empty($entry['retake'])) continue;
+                $wt = trim((string)($entry['work_type'] ?? 'lesson'));
+                if ($wt === '') $wt = 'lesson';
+                $baseTypes[] = $wt;
+            }
+            if ($entries) {
+                // Обычная запись полностью заменяет базовые оценки клетки: базовые
+                // строки урока с НЕ указанными в списке типами работ удаляются
+                // (исторические попытки is_retake=1 сохраняются)
+                if ($baseTypes) {
+                    $placeholders = implode(',', array_fill(0, count($baseTypes), '?'));
+                    $pdo->prepare("DELETE FROM marks WHERE student_id=? AND lesson_id=? AND is_retake=0 AND work_type NOT IN ($placeholders)")
+                        ->execute(array_merge([$studentId, $lessonId], $baseTypes));
+                }
+            } else {
+                // Пустой список — убрать все базовые оценки ученика за урок
+                $pdo->prepare('DELETE FROM marks WHERE student_id=? AND lesson_id=? AND is_retake=0')
+                    ->execute([$studentId, $lessonId]);
+                continue;
+            }
+            foreach ($entries as $entry) {
                 $entry = (array)$entry;
                 $value = isset($entry['value']) ? (int)$entry['value'] : 0;
                 $workType = trim((string)($entry['work_type'] ?? 'lesson'));
@@ -218,9 +267,17 @@ class ApiController
                 if ($value < 2 || $value > 5) {
                     continue;
                 }
-                $pdo->prepare(
-                    'INSERT INTO marks (student_id, lesson_id, value, work_type, comment) VALUES (?,?,?,?,?)'
-                )->execute([$studentId, $lessonId, $value, $workType, $comment]);
+                $markId = isset($entry['id']) ? (int)$entry['id'] : 0;
+                // Дата пересдачи — отдельным полем (Y-m-d); при отсутствии
+                // берётся из комментария/текущего дня (MarkService)
+                $date = isset($entry['date']) ? (string)$entry['date'] : null;
+                if (!empty($entry['retake'])) {
+                    if ($subjectId) {
+                        MarkService::saveRetake($studentId, $subjectId, $workType, $value, $comment, $lessonId, $markId, $date);
+                    }
+                } else {
+                    MarkService::saveBase($studentId, $lessonId, $workType, $value, $comment);
+                }
             }
         }
         $this->json(['ok' => true]);
@@ -409,14 +466,18 @@ class ApiController
         $marks = [];
         if ($lessonIdInts) {
             $placeholders = implode(',', array_fill(0, count($lessonIdInts), '?'));
-            $st = $pdo->prepare("SELECT lesson_id, student_id, value, work_type, comment
-                FROM marks WHERE lesson_id IN ($placeholders) ORDER BY id");
+            $st = $pdo->prepare("SELECT m.id, m.lesson_id, m.student_id, m.value, m.work_type, m.comment, m.attempt_date, m.is_retake, m.is_current
+                FROM marks m WHERE m.lesson_id IN ($placeholders) ORDER BY m.attempt_date, m.id");
             $st->execute($lessonIdInts);
             foreach ($st->fetchAll() as $m) {
                 $marks[(string)$m['lesson_id']][(string)$m['student_id']][] = [
+                    'id' => (int)$m['id'],
                     'value' => (int)$m['value'],
                     'work_type' => $m['work_type'],
                     'comment' => $m['comment'] ?? '',
+                    'attempt_date' => $m['attempt_date'],
+                    'is_retake' => (int)$m['is_retake'],
+                    'is_current' => (int)$m['is_current'],
                 ];
             }
         }
@@ -460,7 +521,8 @@ class ApiController
         }
 
         $sql = 'SELECT s.id AS student_id, s.last_name, s.first_name, s.middle_name,
-                       m.value, m.work_type, m.created_at, l.date AS lesson_date
+                       m.value, m.work_type, m.comment, m.attempt_date, m.is_retake, m.is_current, m.created_at,
+                       l.date AS lesson_date
                 FROM students s
                 JOIN marks m ON m.student_id = s.id
                 JOIN lessons l ON l.id = m.lesson_id';
