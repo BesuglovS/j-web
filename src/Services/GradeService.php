@@ -77,10 +77,11 @@ foreach ($subjects as $sub) {
     public static function perSubject(int $studentId): array
     {
         $st = Database::pdo()->prepare(
-            'SELECT sub.name AS subject, sub.short_name, m.value, m.work_type, m.comment, m.is_retake, m.is_current, l.date, l.topic
+            'SELECT sub.name AS subject, sub.short_name, m.value, m.work_type, m.comment, m.is_retake, m.is_current, l.date, l.topic, l.class_id, c.name AS class_name
              FROM marks m
              JOIN lessons l ON l.id=m.lesson_id
              JOIN subjects sub ON sub.id=l.subject_id
+             LEFT JOIN classes c ON c.id=l.class_id
              WHERE m.student_id=?
              ORDER BY sub.name, l.date, l.id'
         );

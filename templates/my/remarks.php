@@ -6,7 +6,7 @@
     <?php foreach ($rows as $r): ?>
       <tr>
         <td><?php echo e($r['date']); ?></td>
-        <td><?php echo e($r['subject']); ?></td>
+        <td><?php echo e($r['subject']); ?><?php if (!empty($r['class_name'])): ?> <span class="text-xs text-slate-400">(<?php echo e($r['class_name']); ?>)</span><?php endif; ?></td>
         <td><?php echo e($r['text']); ?></td>
       </tr>
     <?php endforeach; ?>

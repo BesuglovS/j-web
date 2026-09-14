@@ -151,6 +151,91 @@ class AdminController
         redirect('/admin/quarters');
     }
 
+    // ================== Тьюторы (классные руководители) ==================
+    public function tutors(): string
+    {
+        $this->boot();
+        GroupService::ensureSynced();
+        $pdo = Database::pdo();
+        $rows = $pdo->query(
+            'SELECT t.id, t.login, t.full_name, t.created_at, GROUP_CONCAT(c.name, \', \') AS class_names
+             FROM tutors t
+             LEFT JOIN tutor_classes tc ON tc.tutor_id=t.id
+             LEFT JOIN classes c ON c.id=tc.class_id
+             GROUP BY t.id
+             ORDER BY t.full_name'
+        )->fetchAll();
+        $classes = $pdo->query('SELECT * FROM classes ORDER BY grade, name')->fetchAll();
+        $editId = (int)($_GET['edit'] ?? 0);
+        $edit = null;
+        $editClassIds = [];
+        if ($editId) {
+            $st = $pdo->prepare('SELECT * FROM tutors WHERE id=?');
+            $st->execute([$editId]);
+            $edit = $st->fetch() ?: null;
+            if ($edit) {
+                $st = $pdo->prepare('SELECT class_id FROM tutor_classes WHERE tutor_id=?');
+                $st->execute([$editId]);
+                $editClassIds = array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN));
+            }
+        }
+        return View::render('admin/tutors', compact('rows', 'classes', 'edit', 'editClassIds'));
+    }
+
+    public function tutorSave(): void
+    {
+        $this->boot();
+        $this->csrfGuard();
+        $id = (int)($_POST['id'] ?? 0);
+        $login = trim((string)($_POST['login'] ?? ''));
+        $fullName = trim((string)($_POST['full_name'] ?? ''));
+        $classIds = array_map('intval', (array)($_POST['classes'] ?? []));
+        if ($login === '') {
+            flash_set('admin_error', 'Укажите логин тьютора (совпадает с логином на портале).');
+            redirect('/admin/tutors');
+        }
+        $pdo = Database::pdo();
+        // логин не должен пересекаться с зеркалами студентов/родителей —
+        // Auth::user() резолвит роли по логину, дубль даст неверную роль
+        $dup = $pdo->prepare('SELECT id FROM users WHERE LOWER(login)=LOWER(?) LIMIT 1');
+        $dup->execute([$login]);
+        if ($dup->fetch()) {
+            flash_set('admin_error', 'Этот логин уже занят учётной записью студента или родителя.');
+            redirect('/admin/tutors');
+        }
+        $dupTutor = $pdo->prepare('SELECT id FROM tutors WHERE LOWER(login)=LOWER(?) AND id<>? LIMIT 1');
+        $dupTutor->execute([$login, $id]);
+        if ($dupTutor->fetch()) {
+            flash_set('admin_error', 'Тьютор с таким логином уже существует.');
+            redirect('/admin/tutors');
+        }
+        if ($id) {
+            $pdo->prepare('UPDATE tutors SET login=?, full_name=? WHERE id=?')->execute([$login, $fullName, $id]);
+        } else {
+            $pdo->prepare('INSERT INTO tutors (login, full_name) VALUES (?,?)')->execute([$login, $fullName]);
+            $id = (int)$pdo->lastInsertId();
+        }
+        // привязка к классам перезаписывается целиком
+        $pdo->prepare('DELETE FROM tutor_classes WHERE tutor_id=?')->execute([$id]);
+        $ins = $pdo->prepare('INSERT OR IGNORE INTO tutor_classes (tutor_id, class_id) VALUES (?,?)');
+        foreach (array_unique($classIds) as $cid) {
+            if ($cid > 0) {
+                $ins->execute([$id, $cid]);
+            }
+        }
+        flash_set('admin_ok', 'Тьютор сохранён.');
+        redirect('/admin/tutors');
+    }
+
+    public function tutorDelete(array $params): void
+    {
+        $this->boot();
+        $this->csrfGuard();
+        Database::pdo()->prepare('DELETE FROM tutors WHERE id=?')->execute([(int)$params[0]]);
+        flash_set('admin_ok', 'Тьютор удалён.');
+        redirect('/admin/tutors');
+    }
+
     // ================== Студенты (только просмотр) ==================
     public function studentsIndex(): string
     {
@@ -791,6 +876,8 @@ class AdminController
         }
         $title = 'Успеваемость Python-курса';
         $maxLessons = (int)(config()['python_max_lessons'] ?? 50);
+        // Итоговый тест как виртуальный урок: sentinel = maxLessons+1
+        $finalN = $maxLessons + 1;
         // Диапазон отображаемых уроков; по умолчанию 1..last(данные класса)
         $lessonFrom = 1;
         $lessonTo = $summary['max_lesson'] ?? 0;
@@ -804,9 +891,17 @@ class AdminController
         if (isset($_GET['lesson_to'])) {
             $lessonTo = max(0, min($maxLessons, (int)$_GET['lesson_to']));
         }
-        if ($lessonTo > 0 && $lessonTo < $lessonFrom) {
-            $lessonFrom = $lessonTo; // автопомена при инверсном диапазоне
+        // «Итог» можно выбрать в любом из селектов
+        if (isset($_GET['lesson_from']) && (int)$_GET['lesson_from'] === $finalN) {
+            $lessonFrom = $finalN;
         }
-        return View::render('admin/python_progress', compact('classId', 'classes', 'selected', 'summary', 'title', 'maxLessons', 'lessonFrom', 'lessonTo'));
+        if (isset($_GET['lesson_to']) && (int)$_GET['lesson_to'] === $finalN) {
+            $lessonTo = $finalN;
+        }
+        if ($lessonTo > 0 && $lessonTo < $lessonFrom) {
+            // автопомена при инверсном диапазоне (работает и с sentinel «Итог»)
+            [$lessonFrom, $lessonTo] = [$lessonTo, $lessonFrom];
+        }
+        return View::render('admin/python_progress', compact('classId', 'classes', 'selected', 'summary', 'title', 'maxLessons', 'finalN', 'lessonFrom', 'lessonTo'));
     }
 }

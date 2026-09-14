@@ -11,7 +11,32 @@ class StudentController
     {
         $st = Database::pdo()->prepare('SELECT s.*, c.name AS class_name FROM students s LEFT JOIN classes c ON c.id=s.class_id WHERE s.user_id=?');
         $st->execute([Auth::id()]);
-        return $st->fetch() ?: null;
+        $s = $st->fetch() ?: null;
+        if ($s) {
+            // все группы ученика (класс + подгруппы)
+            $cn = Database::pdo()->prepare('SELECT c.name FROM student_classes sc JOIN classes c ON c.id=sc.class_id WHERE sc.student_id=? ORDER BY c.name');
+            $cn->execute([(int)$s['id']]);
+            $names = $cn->fetchAll(PDO::FETCH_COLUMN);
+            $s['all_class_names'] = implode(', ', $names) ?: (string)($s['class_name'] ?? '');
+        }
+        return $s;
+    }
+
+    /**
+     * Все id групп ученика (student_classes); если связей нет — основная группа.
+     */
+    private function classIds(int $studentId, ?int $primaryClassId = null): array
+    {
+        $st = Database::pdo()->prepare('SELECT class_id FROM student_classes WHERE student_id=?');
+        $st->execute([$studentId]);
+        $ids = array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN));
+        if (!$ids && $primaryClassId) {
+            $ids = [(int)$primaryClassId];
+        }
+        if (!$ids) {
+            $ids = [0];
+        }
+        return $ids;
     }
 
     public function index(): string
@@ -23,14 +48,16 @@ class StudentController
         }
         $sid = (int)$s['id'];
         $pdo = Database::pdo();
-        $lastMarks = $pdo->prepare('SELECT m.value, m.work_type, m.comment, l.date, sub.name AS subject FROM marks m JOIN lessons l ON l.id=m.lesson_id JOIN subjects sub ON sub.id=l.subject_id WHERE m.student_id=? ORDER BY l.date DESC, l.id DESC');
+        $classIds = $this->classIds($sid, (int)$s['class_id']);
+        $hwFilter = implode(',', array_fill(0, count($classIds), '?'));
+        $lastMarks = $pdo->prepare('SELECT m.value, m.work_type, m.comment, l.date, sub.name AS subject, c.name AS class_name FROM marks m JOIN lessons l ON l.id=m.lesson_id JOIN subjects sub ON sub.id=l.subject_id JOIN classes c ON c.id=l.class_id WHERE m.student_id=? ORDER BY l.date DESC, l.id DESC');
         $lastMarks->execute([$sid]);
-        $pendingHw = $pdo->prepare('SELECT hw.*, sub.name AS subject, l.date AS lesson_date,
+        $pendingHw = $pdo->prepare("SELECT hw.*, sub.name AS subject, l.date AS lesson_date, c.name AS class_name,
                     (SELECT hws.status FROM homework_submissions hws WHERE hws.homework_id=hw.id AND hws.student_id=?) AS my_status
-                    FROM homeworks hw JOIN lessons l ON l.id=hw.lesson_id JOIN subjects sub ON sub.id=l.subject_id
-                    WHERE l.class_id=? ORDER BY COALESCE(hw.due_date,l.date) DESC');
-        $pendingHw->execute([$sid, $s['class_id']]);
-        $remarks = $pdo->prepare('SELECT r.text, r.created_at, l.date, sub.name AS subject FROM lesson_remarks r JOIN lessons l ON l.id=r.lesson_id JOIN subjects sub ON sub.id=l.subject_id WHERE r.student_id=? ORDER BY r.created_at DESC');
+                    FROM homeworks hw JOIN lessons l ON l.id=hw.lesson_id JOIN subjects sub ON sub.id=l.subject_id JOIN classes c ON c.id=l.class_id
+                    WHERE l.class_id IN ($hwFilter) ORDER BY COALESCE(hw.due_date,l.date) DESC");
+        $pendingHw->execute(array_merge([$sid], $classIds));
+        $remarks = $pdo->prepare('SELECT r.text, r.created_at, l.date, sub.name AS subject, c.name AS class_name FROM lesson_remarks r JOIN lessons l ON l.id=r.lesson_id JOIN subjects sub ON sub.id=l.subject_id JOIN classes c ON c.id=l.class_id WHERE r.student_id=? ORDER BY r.created_at DESC');
         $remarks->execute([$sid]);
         return View::render('my/index', [
             'student' => $s,
@@ -57,16 +84,19 @@ class StudentController
         if (!$s) return View::render('my/empty', ['note' => 'Нет привязки к студенту.']);
         $sid = (int)$s['id'];
         $pdo = Database::pdo();
-        $rows = $pdo->prepare('SELECT hw.*, sub.name AS subject, l.date AS lesson_date, l.topic,
+        $classIds = $this->classIds($sid, (int)$s['class_id']);
+        $hwFilter = implode(',', array_fill(0, count($classIds), '?'));
+        $rows = $pdo->prepare("SELECT hw.*, sub.name AS subject, l.date AS lesson_date, c.name AS class_name,
                     (SELECT hws.status FROM homework_submissions hws WHERE hws.homework_id=hw.id AND hws.student_id=?) AS my_status,
                     (SELECT hws.result_mark FROM homework_submissions hws WHERE hws.homework_id=hw.id AND hws.student_id=?) AS my_mark,
                     (SELECT hws.comment FROM homework_submissions hws WHERE hws.homework_id=hw.id AND hws.student_id=?) AS my_comment
                     FROM homeworks hw
                     JOIN lessons l ON l.id=hw.lesson_id
                     JOIN subjects sub ON sub.id=l.subject_id
-                    WHERE l.class_id=?
-                    ORDER BY COALESCE(hw.due_date,l.date) DESC');
-        $rows->execute([$sid, $sid, $sid, $s['class_id']]);
+                    JOIN classes c ON c.id=l.class_id
+                    WHERE l.class_id IN ($hwFilter)
+                    ORDER BY COALESCE(hw.due_date,l.date) DESC");
+        $rows->execute(array_merge([$sid, $sid, $sid], $classIds));
         return View::render('my/homeworks', ['student' => $s, 'rows' => $rows->fetchAll()]);
     }
 
@@ -109,7 +139,7 @@ class StudentController
         $this->boot();
         $s = $this->student();
         if (!$s) return View::render('my/empty', ['note' => 'Нет привязки к студенту.']);
-        $st = Database::pdo()->prepare('SELECT r.text, r.created_at, l.date, sub.name AS subject FROM lesson_remarks r JOIN lessons l ON l.id=r.lesson_id JOIN subjects sub ON sub.id=l.subject_id WHERE r.student_id=? ORDER BY r.created_at DESC');
+        $st = Database::pdo()->prepare('SELECT r.text, r.created_at, l.date, sub.name AS subject, c.name AS class_name FROM lesson_remarks r JOIN lessons l ON l.id=r.lesson_id JOIN subjects sub ON sub.id=l.subject_id JOIN classes c ON c.id=l.class_id WHERE r.student_id=? ORDER BY r.created_at DESC');
         $st->execute([$s['id']]);
         return View::render('my/remarks', ['student' => $s, 'rows' => $st->fetchAll()]);
     }

@@ -66,6 +66,26 @@ function now(): string
     return date('Y-m-d H:i:s');
 }
 
+/**
+ * Человекочитаемое название типа работы («за что» поставлена оценка).
+ * Значения: lesson (Урок), control (Контроль), homework (Домашнее),
+ * answer (Ответ), ДЗ (оценки за ДЗ из мобильного приложения).
+ * Неизвестные значения — переводы для: ДЗ (Домашнее задание), СР (Самостоятельная работа).
+ */
+function work_type_label(?string $type): string
+{
+    static $map = [
+        'lesson'   => 'Урок',
+        'control'  => 'Контроль',
+        'homework' => 'Домашнее',
+        'answer'   => 'Ответ',
+        'ДЗ'       => 'ДЗ',
+        'СР'       => 'СР',
+    ];
+    $t = trim((string)$type);
+    return $map[$t] ?? ($t ?: 'Урок');
+}
+
 function today(): string
 {
     return date('Y-m-d');

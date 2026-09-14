@@ -8,7 +8,7 @@
     <?php foreach ($children as $c): ?>
       <a href="/parent/child/<?php echo (int)$c['id']; ?>" class="card p-4 hover:shadow-md block">
         <div class="font-medium"><?php echo e(trim($c['last_name'].' '.$c['first_name'].' '.$c['middle_name'])); ?></div>
-        <div class="text-sm text-slate-500">Класс: <?php echo e($c['class_name']); ?></div>
+        <div class="text-sm text-slate-500">Группы: <?php echo e($c['all_class_names'] ?? ($c['class_name'] ?? '')); ?></div>
         <div class="mt-2 text-blue-600 text-sm">Просмотр →</div>
       </a>
     <?php endforeach; ?>

@@ -72,6 +72,24 @@ CREATE TABLE IF NOT EXISTS student_classes (
     FOREIGN KEY (class_id)   REFERENCES classes(id)  ON DELETE CASCADE
 );
 
+-- Тьюторы (классные руководители): роль резолвится в Auth::user() по
+-- SSO-логину auth-web (своего входа/паролей в журнале нет, таблица users
+-- не задействована). Привязка к классам — tutor_classes.
+CREATE TABLE IF NOT EXISTS tutors (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    login      TEXT NOT NULL UNIQUE,
+    full_name  TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS tutor_classes (
+    tutor_id INTEGER NOT NULL,
+    class_id INTEGER NOT NULL,
+    PRIMARY KEY (tutor_id, class_id),
+    FOREIGN KEY (tutor_id) REFERENCES tutors(id) ON DELETE CASCADE,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS student_parent (
     student_id INTEGER NOT NULL,
     parent_id  INTEGER NOT NULL,
@@ -192,6 +210,8 @@ CREATE INDEX IF NOT EXISTS idx_sc_class         ON student_classes(class_id);
 CREATE INDEX IF NOT EXISTS idx_sc_student       ON student_classes(student_id);
 CREATE INDEX IF NOT EXISTS idx_parents_user     ON parents(user_id);
 CREATE INDEX IF NOT EXISTS idx_sp_parent        ON student_parent(parent_id);
+CREATE INDEX IF NOT EXISTS idx_tc_tutor         ON tutor_classes(tutor_id);
+CREATE INDEX IF NOT EXISTS idx_tc_class         ON tutor_classes(class_id);
 CREATE INDEX IF NOT EXISTS idx_lessons_class    ON lessons(class_id);
 CREATE INDEX IF NOT EXISTS idx_lessons_subject  ON lessons(subject_id);
 CREATE INDEX IF NOT EXISTS idx_marks_lesson     ON marks(lesson_id);

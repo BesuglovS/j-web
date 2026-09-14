@@ -9,7 +9,7 @@ $statusLabels = ['done'=>'Выполнено','partial'=>'Частично','not
 ?>
 <div class="flex justify-between items-center mb-4">
   <a href="/parent" class="btn-secondary">← Мои дети</a>
-  <h3 class="font-semibold text-lg"><?php echo e($name); ?> <span class="text-slate-500 text-sm">(<?php echo e($child['class_name'] ?? ''); ?>)</span></h3>
+  <h3 class="font-semibold text-lg"><?php echo e($name); ?> <span class="text-slate-500 text-sm">(<?php echo e($child['all_class_names'] ?? ($child['class_name'] ?? '')); ?>)</span></h3>
 </div>
 
 <div class="card mb-6 p-4">
@@ -22,8 +22,11 @@ $statusLabels = ['done'=>'Выполнено','partial'=>'Частично','not
       <span class="flex flex-wrap gap-1">
         <?php foreach ($g['items'] as $m): ?>
           <?php $stale = !(int)($m['is_current'] ?? 1); ?>
-          <span class="inline-flex px-1.5 py-0.5 rounded text-xs font-semibold <?php echo $stale ? 'bg-slate-100 text-slate-300 line-through' : ((int)$m['value']>=4?'bg-emerald-100 text-emerald-800':((int)$m['value']===3?'bg-amber-100 text-amber-800':'bg-red-100 text-red-800')); ?>"
-                title="<?php echo e(trim((string)($m['comment'] ?? '')) ?: 'оценка'); ?>"><?php echo (int)$m['value']; ?></span>
+          <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-semibold <?php echo $stale ? 'bg-slate-100 text-slate-300 line-through' : ((int)$m['value']>=4?'bg-emerald-100 text-emerald-800':((int)$m['value']===3?'bg-amber-100 text-amber-800':'bg-red-100 text-red-800')); ?>"
+                title="<?php echo e($m['date']).' — '.e(work_type_label($m['work_type'] ?? null)) . (!empty($m['comment']) ? ' · '.e(trim((string)$m['comment'])) : ''); ?>">
+            <span class="text-[9px] font-normal opacity-75"><?php echo e(work_type_label($m['work_type'] ?? null)); ?></span>
+            <?php echo (int)$m['value']; ?>
+          </span>
         <?php endforeach; ?>
       </span>
     </div>
@@ -36,6 +39,10 @@ $statusLabels = ['done'=>'Выполнено','partial'=>'Частично','not
     <?php foreach ($homeworks as $h): ?>
       <div class="py-1.5 border-b text-sm">
         <b><?php echo e($h['title'] ?: 'Задание'); ?></b> — <?php echo e($h['subject']); ?>
+        <div class="text-xs text-slate-500">
+          <?php echo e(!empty($h['due_date']) ? 'срок '.$h['due_date'] : ($h['lesson_date'] ? 'урок '.$h['lesson_date'] : '')); ?>
+          <?php if (!empty($h['class_name'])): ?> · <?php echo e($h['class_name']); ?><?php endif; ?>
+        </div>
         <div class="text-xs">
           Статус: <span class="<?php echo $h['my_status']==='done'?'text-emerald-700':($h['my_status']==='partial'?'text-amber-700':'text-slate-400'); ?>">
             <?php echo $h['my_status'] ? e($statusLabels[$h['my_status']]) : '—'; ?>
@@ -51,7 +58,7 @@ $statusLabels = ['done'=>'Выполнено','partial'=>'Частично','not
     <h4 class="font-semibold mb-3">Замечания</h4>
     <?php foreach ($remarks as $r): ?>
       <div class="py-1.5 border-b text-sm">
-        <div class="text-xs text-slate-500"><?php echo e($r['date']); ?> · <?php echo e($r['subject']); ?></div>
+        <div class="text-xs text-slate-500"><?php echo e($r['date']); ?> · <?php echo e($r['subject']); ?><?php if (!empty($r['class_name'])): ?> · <?php echo e($r['class_name']); ?><?php endif; ?></div>
         <?php echo e($r['text']); ?>
       </div>
     <?php endforeach; ?>

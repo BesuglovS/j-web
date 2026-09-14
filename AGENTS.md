@@ -25,6 +25,10 @@
 7. **Auth-модель едина**: admin, student и parent входят через SSO auth-web (кука `auth_session`;
    учётки родителей создаются в админке auth-web, локального входа и локальных паролей нет —
    `Auth::attempt()`/`Auth::changePassword()` удалены, все роли резолвятся в `Auth::user()` по логину SSO.
+   Четвёртая роль — **tutor**: тьютор (классный руководитель) тоже входит через SSO; журнал хранит
+   в таблице `tutors` только логин/ФИО и привязку `tutor_classes` (управление в `/admin/tutors`),
+   пароли — на портале auth-web (учётки создаются там; `scripts/create_tutors.php` auth-web).
+   Записывать логин тьютора в `users` нельзя — конфликт резолвинга ролей по логину (student/parent).
 8. **Seed-хэш первого админа захардкожен** в `config.php` и `migration.sql` — менять их нужно ОБА и синхронно.
 9. **`AuthClient.php` и `assets-src/public/tracking-client.js` — копии канонических источников auth-web**
    (`na-web/shared/`); не расходиться, синхронизировать.
@@ -61,11 +65,11 @@ src/bootstrap.php          # lifecycle: helpers, config(), spl_autoload_register
 src/config.php             # пути, опции БД, session_name, csrf_key, URL auth-web, seed-хэш
 src/routes.php             # ~50 маршрутов; Router::dispatch() → Controller::action($params) (позиционный массив!)
 src/Router.php, Database.php, Auth.php, AuthClient.php, View.php, helpers.php
-src/Controllers/           # AdminController, AuthController, DashboardController, StudentController, ParentController
+src/Controllers/           # AdminController, AuthController, DashboardController, StudentController, ParentController, TutorController
 src/Services/              # GroupService, StudentService, ParentService, GradeService
 src/Models/                # ПУСТО и не используется — не подразумевайте слой моделей
 db/migration.sql           # схема (идемпотентная); db/app.db — живая БД (gitignored)
-templates/                 # plain-PHP шаблоны (Tailwind): layouts/ app.php; admin/, my/, parent/
+templates/                 # plain-PHP шаблоны (Tailwind): layouts/ app.php; admin/, my/, parent/, tutor/
                            # (страницы входа нет: гостя requireLogin() отправляет сразу на портал auth-web)
 assets-src/                # Vite root: entries/ (app.js, app.css), public/tracking-client.js, vite.config.js
 runtime/                   # логи/tmp (gitignored; на сервере обязана существовать)
@@ -75,7 +79,8 @@ deploy.ps1, j.nayanovaacademy.ru (nginx)
 ## 📊 Схема БД (ключевое)
 
 `users` (login UNIQUE, password_hash пустой/не используется, role admin|student|parent),
-`classes` (external_id = auth-web group id),
+`tutors` (логин SSO + ФИО тьютора, роль резолвится в Auth::user() по логину),
+`tutor_classes` (тьютор → классы), `classes` (external_id = auth-web group id),
 `subjects` (привязан к class), `students` (external_id = auth-web user id),
 `parents` (external_id = id профиля parents auth-web — read-only зеркало), `student_parent`,
 `quarters`, `lessons`, `homeworks`, `marks` (1–5; `UNIQUE(student_id, lesson_id, work_type)` + upsert),

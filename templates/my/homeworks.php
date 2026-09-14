@@ -9,7 +9,7 @@ $statusLabels = ['done'=>'Выполнено','partial'=>'Частично','not
     <tbody>
     <?php foreach ($rows as $h): ?>
       <tr>
-        <td><?php echo e($h['subject']); ?><div class="text-xs text-slate-400">урок <?php echo e($h['lesson_date']); ?></div></td>
+        <td><?php echo e($h['subject']); ?><div class="text-xs text-slate-400">урок <?php echo e($h['lesson_date']); ?><?php if (!empty($h['class_name'])): ?> · <?php echo e($h['class_name']); ?><?php endif; ?></div></td>
         <td>
           <b><?php echo e($h['title'] ?: 'Задание'); ?></b>
           <?php if ($h['description']): ?><div class="text-sm text-slate-600"><?php echo e($h['description']); ?></div><?php endif; ?>

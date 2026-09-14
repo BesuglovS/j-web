@@ -24,6 +24,7 @@ $title = $title ?? config()['app_name'];
         <a href="/admin/classes" class="px-3 py-1.5 rounded hover:bg-slate-700">Классы</a>
         <a href="/admin/subjects" class="px-3 py-1.5 rounded hover:bg-slate-700">Предметы</a>
         <a href="/admin/students" class="px-3 py-1.5 rounded hover:bg-slate-700">Студенты</a>
+        <a href="/admin/tutors" class="px-3 py-1.5 rounded hover:bg-slate-700">Тьюторы</a>
         <a href="/admin/grades" class="px-3 py-1.5 rounded hover:bg-slate-700">Оценки</a>
         <a href="/admin/python-progress" class="px-3 py-1.5 rounded hover:bg-slate-700">Python-курс</a>
         <a href="/admin/quarters" class="px-3 py-1.5 rounded hover:bg-slate-700">Периоды</a>
@@ -32,6 +33,9 @@ $title = $title ?? config()['app_name'];
         <a href="/my/grades" class="px-3 py-1.5 rounded hover:bg-slate-700">Оценки</a>
         <a href="/my/homeworks" class="px-3 py-1.5 rounded hover:bg-slate-700">Домашние задания</a>
         <a href="/my/remarks" class="px-3 py-1.5 rounded hover:bg-slate-700">Замечания</a>
+      <?php elseif ($role === 'tutor'): ?>
+        <a href="/tutor" class="px-3 py-1.5 rounded hover:bg-slate-700">Мои классы</a>
+        <a href="/tutor/grades" class="px-3 py-1.5 rounded hover:bg-slate-700">Оценки</a>
       <?php elseif ($role === 'parent'): ?>
         <a href="/parent" class="px-3 py-1.5 rounded hover:bg-slate-700">Мои дети</a>
       <?php endif; ?>

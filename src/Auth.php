@@ -3,11 +3,12 @@
 /**
  * Аутентификация и проверка ролей.
  *
- * Все роли (администраторы, ученики, родители) авторизуются через единый
- * портал auth.nayanovaacademy.ru (общая кука auth_session). Журнал
- * хранит только локальные зеркала учётных записей без паролей
+ * Все роли (администраторы, тьюторы, ученики, родители) авторизуются
+ * через единый портал auth.nayanovaacademy.ru (общая кука auth_session).
+ * Журнал хранит только локальные зеркала учётных записей без паролей
  * (users: admin — без записей, student/parent — синхронизируются из
- * auth-web), локального входа нет.
+ * auth-web; tutors — логины тьюторов, задаются в админке журнала),
+ * локального входа нет.
  */
 class Auth
 {
@@ -30,6 +31,21 @@ class Auth
                 'login'    => (string)($sso['login'] ?? ''),
                 'full_name' => (string)($sso['display_name'] ?? ''),
                 'is_sso'   => true,
+            ];
+        }
+
+        // Тьютор (классный руководитель): учётка в таблице tutors (логин
+        // совпадает с SSO-логином auth-web, паролей в журнале нет)
+        $st = Database::pdo()->prepare('SELECT id, login, full_name FROM tutors WHERE LOWER(login)=LOWER(?) LIMIT 1');
+        $st->execute([(string)($sso['login'] ?? '')]);
+        $tutor = $st->fetch();
+        if ($tutor) {
+            return [
+                'id'        => (int)$tutor['id'],
+                'role'      => 'tutor',
+                'login'     => (string)$tutor['login'],
+                'full_name' => (string)$tutor['full_name'],
+                'is_sso'    => true,
             ];
         }
 
@@ -124,6 +140,8 @@ class Auth
         $role = self::role();
         if ($role === 'admin') {
             redirect('/admin');
+        } elseif ($role === 'tutor') {
+            redirect('/tutor');
         } elseif ($role === 'student') {
             redirect('/my');
         } elseif ($role === 'parent') {

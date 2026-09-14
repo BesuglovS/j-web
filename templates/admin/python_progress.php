@@ -2,6 +2,7 @@
 <?php $selected = $selected ?? null; ?>
 <?php $summary = $summary ?? null; ?>
 <?php $maxLessons = (int)($maxLessons ?? 50); ?>
+<?php $finalN = (int)($finalN ?? $maxLessons + 1); ?>
 <?php $lessonFrom = (int)($lessonFrom ?? 1); ?>
 <?php $lessonTo = (int)($lessonTo ?? 0); ?>
 <div class="mb-4">
@@ -23,6 +24,7 @@
         <?php for ($n = 1; $n <= $maxLessons; $n++): ?>
           <option value="<?php echo $n; ?>" <?php echo $n === $lessonFrom ? 'selected' : ''; ?>>Урок <?php echo $n; ?></option>
         <?php endfor; ?>
+        <option value="<?php echo $finalN; ?>" <?php echo $lessonFrom === $finalN ? 'selected' : ''; ?>>Итог</option>
       </select>
     </div>
     <div>
@@ -31,6 +33,7 @@
         <?php for ($n = 1; $n <= $maxLessons; $n++): ?>
           <option value="<?php echo $n; ?>" <?php echo $n === $lessonTo ? 'selected' : ''; ?>>Урок <?php echo $n; ?><?php echo $n === (int)($summary['max_lesson'] ?? 0) ? ' (последний с результатами)' : ''; ?></option>
         <?php endfor; ?>
+        <option value="<?php echo $finalN; ?>" <?php echo $lessonTo === $finalN ? 'selected' : ''; ?>>Итог</option>
       </select>
     </div>
     <button class="btn-primary">Показать</button>
@@ -72,6 +75,7 @@
       // Подготовка: агрегаты по урокам (в выбранном диапазоне)
       $lessonStats = [];
       for ($n = $renderFrom; $n <= $renderTo; $n++) {
+          if ($n === $finalN) continue; // итоговый тест — без агреатов по классу
           $lessonStats[$n] = ['quiz_sum' => 0, 'quiz_cnt' => 0, 'solved' => 0, 'total' => 0, 'blocks' => 0];
       }
       foreach ($students as $s) {
@@ -104,8 +108,11 @@
         <thead>
           <tr>
             <th class="sticky left-0 top-0 z-30 bg-slate-50 border-r border-slate-200 shadow-[1px_0_0_rgba(0,0,0,0.03)]">Ученик</th>
-            <th class="sticky top-0 z-20 bg-slate-50 text-center border-l border-slate-200" title="Итоговый тест">Итог</th>
             <?php for ($n = $renderFrom; $n <= $renderTo; $n++): ?>
+              <?php if ($n === $finalN): ?>
+                <th class="sticky top-0 z-20 bg-slate-50 text-center whitespace-nowrap border-l border-slate-200" title="Итоговый тест">Итог</th>
+                <?php continue; ?>
+              <?php endif; ?>
               <th class="sticky top-0 z-20 bg-slate-50 text-center whitespace-nowrap border-l border-slate-200" title="Урок <?php echo $n; ?>">
                 <?php if (isset($lessonContests[$n])): ?>
                   <span class="text-indigo-600" title="Урок <?php echo $n; ?> + решённые задачи (контест <?php echo (int)$lessonContests[$n]; ?>)"><?php echo $n; ?>*</span>
@@ -117,18 +124,21 @@
           </tr>
         </thead>
         <tbody>
-          <?php foreach ($students as $s): ?>
-            <tr class="hover:bg-slate-50 group">
+            <?php foreach ($students as $s): ?>
+              <tr class="hover:bg-slate-50 group">
               <td class="sticky left-0 z-10 bg-white border-r border-slate-200 group-hover:bg-slate-50 font-medium whitespace-nowrap"><?php echo e($s['name']); ?></td>
-              <td class="text-center border-l border-slate-200">
-                <?php if (isset($finalScores[$s['id']])): ?>
-                  <?php $fs = $finalScores[$s['id']]; ?>
-                  <span class="inline-block px-1.5 rounded <?php echo $fs >= 90 ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'; ?>"><?php echo $fs; ?>%</span>
-                <?php else: ?>
-                  <span class="text-slate-300">—</span>
-                <?php endif; ?>
-              </td>
               <?php for ($n = $renderFrom; $n <= $renderTo; $n++): ?>
+                <?php if ($n === $finalN): ?>
+                  <?php $quiz = isset($s['lessons'][-1]) && $s['lessons'][-1]['quiz'] !== null ? (int)$s['lessons'][-1]['quiz'] : null; ?>
+                  <td class="text-center whitespace-nowrap border-l border-slate-200">
+                    <?php if ($quiz !== null): ?>
+                      <span class="inline-block px-1.5 rounded <?php echo $quiz >= 90 ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'; ?>"><?php echo $quiz; ?>%</span>
+                    <?php else: ?>
+                      <span class="text-slate-300">—</span>
+                    <?php endif; ?>
+                  </td>
+                  <?php continue; ?>
+                <?php endif; ?>
                 <?php
                   $l = $s['lessons'][$n] ?? null;
                   if ($l === null):
@@ -176,8 +186,11 @@
           <?php // строка итогов по классу ?>
           <tr class="border-t-2 border-slate-300 bg-slate-50 font-medium">
             <td class="sticky left-0 z-10 bg-slate-50 border-r border-slate-200 border-l border-slate-200">Класс</td>
-            <td class="text-center text-slate-400 border-l border-slate-200"><?php echo count($finalScores) ? (string)count($finalScores) : '—'; ?></td>
             <?php for ($n = $renderFrom; $n <= $renderTo; $n++): ?>
+              <?php if ($n === $finalN): ?>
+                <td class="text-center text-slate-400 border-l border-slate-200"><?php echo count($finalScores) ? (string)count($finalScores) : '—'; ?></td>
+                <?php continue; ?>
+              <?php endif; ?>
               <?php
                 $ls = $lessonStats[$n];
                 $fragments = [];

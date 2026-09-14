@@ -22,6 +22,12 @@ $r->get('/admin/quarters',       'AdminController@quartersIndex');
 $r->post('/admin/quarters/save', 'AdminController@quarterSave');
 $r->post('/admin/quarters/delete/{id}', 'AdminController@quarterDelete');
 
+// тьюторы (классные руководители): учётки — логины SSO auth-web,
+// вход на портал; журнал хранит только логин/ФИО и привязку к классам
+$r->get('/admin/tutors',              'AdminController@tutors');
+$r->post('/admin/tutors/save',        'AdminController@tutorSave');
+$r->post('/admin/tutors/delete/{id}', 'AdminController@tutorDelete');
+
 // студенты (только просмотр; состав ведётся в auth-web и синхронизируется)
 $r->get('/admin/students',           'AdminController@studentsIndex');
 $r->post('/admin/students/sync',     'AdminController@studentSync');
@@ -59,6 +65,10 @@ $r->get('/my/grades',           'StudentController@grades');
 $r->get('/my/homeworks',         'StudentController@homeworks');
 $r->post('/my/homeworks/{id}/submit', 'StudentController@homeworkSubmit');
 $r->get('/my/remarks',           'StudentController@remarks');
+
+// ---- Тьютор (классный руководитель): read-only просмотр своих классов ----
+$r->get('/tutor',        'TutorController@index');
+$r->get('/tutor/grades', 'TutorController@grades');
 
 // ---- Родитель ----
 $r->get('/parent',                'ParentController@index');
