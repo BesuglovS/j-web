@@ -6,6 +6,7 @@ $classId = (int)($classId ?? 0);
 $quarterId = (int)($quarterId ?? 0);
 $subjectId = (int)($subjectId ?? 0);
 $grades = $grades ?? [];
+$homeworks = $homeworks ?? [];
 $className = (string)($className ?? '');
 $students = $grades['students'] ?? [];
 $markSets = $grades['markSets'] ?? [];
@@ -42,6 +43,25 @@ $subjectList = ($subjectId ? array_filter($subjects, fn($s)=>(int)$s['id']===$su
 </div>
 
 <?php if ($classId): ?>
+<?php if ($students): ?>
+<div class="card mb-4 p-3">
+  <form method="get" action="/tutor/class/<?php echo (int)$classId; ?>" class="grid sm:grid-cols-2 gap-3 items-end">
+    <div>
+      <label class="label">Ученик</label>
+      <select name="student_id" class="input" onchange="this.form.submit()">
+        <option value="0">— выберите ученика —</option>
+        <?php foreach ($students as $st): ?>
+          <option value="<?php echo (int)$st['id']; ?>"><?php echo e(trim($st['last_name'].' '.$st['first_name'])); ?></option>
+        <?php endforeach; ?>
+      </select>
+    </div>
+    <div class="flex items-end">
+      <button class="btn-primary">Подробно</button>
+    </div>
+  </form>
+  <div class="mt-2 text-xs text-slate-500">Или нажмите на фамилию ученика в таблице — откроются его оценки, домашние задания и замечания.</div>
+</div>
+<?php endif; ?>
 <div class="mb-3 text-slate-600 text-sm">Класс: <b><?php echo e($className); ?></b></div>
 <div class="card overflow-hidden">
   <table class="table">
@@ -49,7 +69,7 @@ $subjectList = ($subjectId ? array_filter($subjects, fn($s)=>(int)$s['id']===$su
     <tbody>
     <?php foreach ($students as $st): ?>
       <tr>
-        <td class="whitespace-nowrap"><?php echo e(trim($st['last_name'].' '.$st['first_name'])); ?></td>
+        <td class="whitespace-nowrap"><a href="/tutor/class/<?php echo (int)$classId; ?>?student_id=<?php echo (int)$st['id']; ?>" class="text-blue-600 hover:underline"><?php echo e(trim($st['last_name'].' '.$st['first_name'])); ?></a></td>
         <?php foreach ($subjectList as $s): ?>
           <?php
             $vals = [];
@@ -63,6 +83,32 @@ $subjectList = ($subjectId ? array_filter($subjects, fn($s)=>(int)$s['id']===$su
     <?php if (!$students): ?><tr><td colspan="<?php echo count($subjectList)+1; ?>" class="text-slate-400 text-center py-6">Нет данных</td></tr><?php endif; ?>
     </tbody>
   </table>
+</div>
+
+<div class="card mt-4 p-4">
+  <h4 class="font-semibold mb-3">Домашние задания</h4>
+  <?php if (!$homeworks): ?><p class="text-slate-400 text-sm">Домашних заданий нет.</p><?php endif; ?>
+  <?php foreach ($homeworks as $h): ?>
+    <div class="py-1.5 border-b text-sm">
+      <div class="flex flex-wrap items-baseline justify-between gap-2">
+        <span><b><?php echo e($h['title'] ?: 'Задание'); ?></b> — <?php echo e($h['subject']); ?></span>
+        <span class="text-xs text-slate-500">урок <?php echo e($h['lesson_date']); ?><?php if ($h['due_date']): ?> · срок <?php echo e($h['due_date']); ?><?php endif; ?></span>
+      </div>
+      <?php if ($h['description']): ?><div class="text-xs text-slate-600"><?php echo e($h['description']); ?></div><?php endif; ?>
+      <?php
+        $done = (int)$h['cnt_done'];
+        $partial = (int)$h['cnt_partial'];
+        $not = (int)$h['cnt_not'];
+        $unmarked = max((int)$h['students_cnt'] - $done - $partial - $not, 0);
+      ?>
+      <div class="text-xs mt-1">
+        <span class="text-emerald-700">Выполнено: <?php echo $done; ?></span>
+        <span class="text-amber-700"> · Частично: <?php echo $partial; ?></span>
+        <span class="text-red-700"> · Не выполнено: <?php echo $not; ?></span>
+        <span class="text-slate-500"> · Без отметки: <?php echo $unmarked; ?></span>
+      </div>
+    </div>
+  <?php endforeach; ?>
 </div>
 <?php else: ?>
 <div class="card p-6 text-slate-500">Выберите класс для просмотра сводки средних оценок.</div>
