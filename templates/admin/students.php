@@ -1,7 +1,7 @@
 <?php
-$rows = $rows ?? [];
-$classes = $classes ?? [];
-$classId = (int)($classId ?? 0);
+$rows = $data['rows'] ?? [];
+$classes = $data['classes'] ?? [];
+$classId = (int)($data['classId'] ?? 0);
 ?>
 <div class="mb-4 p-3 rounded bg-sky-50 border border-sky-200 text-sky-800 text-sm">
   Студенты создаются и редактируются в едином портале —

@@ -1,8 +1,13 @@
 <?php
-/** Приложение. Доступны: $__content */
+/**
+ * Лейаут приложения.
+ * Слоты из View::render(): $data['title'] (стр.), $data['__content'] (HTML).
+ * Фреймворк/flash/сессия читаются напрямую — данных об этом в $data нет.
+ */
 $user = Auth::user();
 $role = $user['role'] ?? '';
-$title = $title ?? config()['app_name'];
+$title = (string)($data['title'] ?? config()['app_name']);
+$__content = (string)($data['__content'] ?? '');
 ?><!DOCTYPE html>
 <html lang="ru">
 <head>

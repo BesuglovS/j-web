@@ -1,7 +1,7 @@
 <?php
-$rows = $rows ?? [];
-$classes = $classes ?? [];
-$classId = (int)($classId ?? 0);
+$rows = $data['rows'] ?? [];
+$classes = $data['classes'] ?? [];
+$classId = (int)($data['classId'] ?? 0);
 ?>
 <div class="flex justify-end mb-4"><a href="/admin/lessons/new" class="btn-primary">Новое занятие</a></div>
 <div class="card mb-4 p-2">

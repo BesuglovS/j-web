@@ -1,9 +1,9 @@
 <?php
-$student = $student ?? [];
-$parents = $parents ?? [];
-$grades = $grades ?? [];
-$remarks = $remarks ?? [];
-$allGrades = $allGrades ?? [];
+$student = $data['student'] ?? [];
+$parents = $data['parents'] ?? [];
+$grades = $data['grades'] ?? [];
+$remarks = $data['remarks'] ?? [];
+$allGrades = $data['allGrades'] ?? [];
 $name = trim($student['last_name'].' '.$student['first_name'].' '.$student['middle_name']);
 ?>
 <div class="flex justify-end mb-4"><a href="/admin/students" class="btn-secondary">← К списку</a></div>

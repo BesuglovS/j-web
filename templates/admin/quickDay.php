@@ -1,7 +1,7 @@
 <?php
-$date = (string)($date ?? '');
-$subjects = $subjects ?? [];
-$existing = $existing ?? [];
+$date = (string)($data['date'] ?? '');
+$subjects = $data['subjects'] ?? [];
+$existing = $data['existing'] ?? [];
 $lessonTimes = AdminController::LESSON_TIMES;
 ?>
 <div class="card max-w-3xl p-6">

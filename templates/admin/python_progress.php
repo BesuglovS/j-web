@@ -1,10 +1,10 @@
-<?php $classes = $classes ?? []; ?>
-<?php $selected = $selected ?? null; ?>
-<?php $summary = $summary ?? null; ?>
-<?php $maxLessons = (int)($maxLessons ?? 50); ?>
-<?php $finalN = (int)($finalN ?? $maxLessons + 1); ?>
-<?php $lessonFrom = (int)($lessonFrom ?? 1); ?>
-<?php $lessonTo = (int)($lessonTo ?? 0); ?>
+<?php $classes = $data['classes'] ?? []; ?>
+<?php $selected = $data['selected'] ?? null; ?>
+<?php $summary = $data['summary'] ?? null; ?>
+<?php $maxLessons = (int)($data['maxLessons'] ?? 50); ?>
+<?php $finalN = (int)($data['finalN'] ?? $maxLessons + 1); ?>
+<?php $lessonFrom = (int)($data['lessonFrom'] ?? 1); ?>
+<?php $lessonTo = (int)($data['lessonTo'] ?? 0); ?>
 <div class="mb-4">
   <form method="get" action="/admin/python-progress" class="flex flex-wrap items-end gap-3 bg-white border border-slate-200 rounded-lg p-3">
     <div>

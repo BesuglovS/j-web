@@ -105,11 +105,12 @@ foreach ($d in @('public', 'src', 'templates', 'db', 'runtime')) {
 $sshArgStr = ""
 if ($sshPort -ne '22') { $sshArgStr += "-p $sshPort " }
 if ($identityFile) { $sshArgStr += "-i `"$identityFile`" " }
-# Сохраняем пользовательские данные (db/, runtime/) на сервере перед очисткой,
-# извлекаем обновлённые файлы приложения, восстанавливаем данные и права.
+# Данные пользователей (db/, runtime/) НЕ стираются и НЕ восстанавливаются:
+# каталоги остаются под www-data (права PHP на запись переживают деплой),
+# а всё остальное (приложение) стирается и распаковывается от deploy.
 # db/app.db* не входит в тарбол (см. ниже), поэтому БД сервера не теряется,
 # но db/migration.sql приходит с обновлённым кодом.
-$sshArgStr += "$remote `"cp -r $remotePath/db /tmp/.jweb-db 2>/dev/null; cp -r $remotePath/runtime /tmp/.jweb-rt 2>/dev/null; rm -rf $remotePath/* $remotePath/.[!.]* 2>/dev/null; mkdir -p $remotePath/db $remotePath/runtime 2>/dev/null; cp -r /tmp/.jweb-db/* $remotePath/db/ 2>/dev/null; cp -r /tmp/.jweb-rt/* $remotePath/runtime/ 2>/dev/null; rm -rf /tmp/.jweb-db /tmp/.jweb-rt; tar -xzf - -C $remotePath; chown -R www-data:www-data $remotePath/db $remotePath/runtime 2>/dev/null; chmod -R 775 $remotePath/db $remotePath/runtime 2>/dev/null`""
+$sshArgStr += "$remote `"find $remotePath -mindepth 1 -maxdepth 1 ! -name 'db' ! -name 'runtime' -exec rm -rf {} + 2>/dev/null; mkdir -p $remotePath/db $remotePath/runtime 2>/dev/null; tar -xzf - --touch --no-same-permissions --no-overwrite-dir -C $remotePath`""
 
 Write-Host "`n==> Deploying to ${remote}:${remotePath} ..." -ForegroundColor Cyan
 
@@ -186,7 +187,7 @@ if ($DryRun) {
 } elseif (Test-Path $nginxLocal) {
   Write-Host "`n==> Deploying nginx config ($nginxSite) ..." -ForegroundColor Cyan
   $scpCmd = "scp $portArg $identityArg `"$nginxLocal`" ${remote}:/tmp/nginx-$nginxSite"
-  $sshNginxCmd = "ssh $portArg $identityArg $remote `"cp /tmp/nginx-$nginxSite $nginxRemote && nginx -t && systemctl reload nginx && rm -f /tmp/nginx-$nginxSite`""
+  $sshNginxCmd = "ssh $portArg $identityArg $remote `"sudo -n /usr/local/sbin/deploy-nginx.sh $nginxSite`""
   cmd /c $scpCmd
   if ($LASTEXITCODE -ne 0) { Write-Host "  Nginx config scp failed" -ForegroundColor Red; exit 1 }
   cmd /c $sshNginxCmd

@@ -1,10 +1,10 @@
 <?php
-$lesson = $lesson ?? [];
-$students = $students ?? [];
-$marksMap = $marksMap ?? [];
-$remarksMap = $remarksMap ?? [];
-$homeworks = $homeworks ?? [];
-$submissionMap = $submissionMap ?? [];
+$lesson = $data['lesson'] ?? [];
+$students = $data['students'] ?? [];
+$marksMap = $data['marksMap'] ?? [];
+$remarksMap = $data['remarksMap'] ?? [];
+$homeworks = $data['homeworks'] ?? [];
+$submissionMap = $data['submissionMap'] ?? [];
 $workTypes = ['lesson' => 'Урок', 'control' => 'Контроль', 'homework' => 'Домашнее', 'answer' => 'Ответ'];
 ?>
 <div class="flex justify-between mb-4">

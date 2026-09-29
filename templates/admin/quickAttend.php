@@ -1,13 +1,13 @@
 <?php
-$dates = $dates ?? [];
-$date = (string)($date ?? '');
-$dayLessons = $dayLessons ?? [];
-$lessonId = (int)($lessonId ?? 0);
-$lesson = $lesson ?? null;
-$students = $students ?? [];
-$attendanceMap = $attendanceMap ?? [];
-$marksMap = $marksMap ?? [];
-$remarksMap = $remarksMap ?? [];
+$dates = $data['dates'] ?? [];
+$date = (string)($data['date'] ?? '');
+$dayLessons = $data['dayLessons'] ?? [];
+$lessonId = (int)($data['lessonId'] ?? 0);
+$lesson = $data['lesson'] ?? null;
+$students = $data['students'] ?? [];
+$attendanceMap = $data['attendanceMap'] ?? [];
+$marksMap = $data['marksMap'] ?? [];
+$remarksMap = $data['remarksMap'] ?? [];
 $workTypes = ['lesson' => 'Урок', 'control' => 'Контроль', 'homework' => 'Д/З', 'answer' => 'Ответ'];
 ?>
 <div class="flex justify-between mb-4">

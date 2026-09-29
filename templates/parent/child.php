@@ -1,9 +1,9 @@
 <?php
-$parent = $parent ?? [];
-$child = $child ?? [];
-$bySubject = $bySubject ?? [];
-$homeworks = $homeworks ?? [];
-$remarks = $remarks ?? [];
+$parent = $data['parent'] ?? [];
+$child = $data['child'] ?? [];
+$bySubject = $data['bySubject'] ?? [];
+$homeworks = $data['homeworks'] ?? [];
+$remarks = $data['remarks'] ?? [];
 $name = trim($child['last_name'].' '.$child['first_name'].' '.$child['middle_name']);
 $statusLabels = ['done'=>'Выполнено','partial'=>'Частично','not_done'=>'Не выполнено'];
 ?>

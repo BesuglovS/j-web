@@ -1,4 +1,4 @@
-<?php $rows = $rows ?? []; ?>
+<?php $rows = $data['rows'] ?? []; ?>
 <div class="mb-4 p-3 rounded bg-sky-50 border border-sky-200 text-sky-800 text-sm">
   Классы создаются и редактируются в едином портале —
   <a class="underline" href="<?php echo e(config()['auth_url']); ?>/index.php?page=admin-groups" target="_blank">auth.nayanovaacademy.ru → Группы</a>.

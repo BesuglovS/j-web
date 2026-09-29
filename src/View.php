@@ -28,7 +28,11 @@ class View
 
     private static function compile(string $file, array $data): string
     {
-        extract($data, EXTR_SKIP);
+        // Явные именованные слоты: шаблон получает только массив $data.
+        // Ничего не экстрактируется в область видимости — ни одна переменная
+        // данных не может перекрыть переменные лейаута/фреймворка. Внутри
+        // шаблона читайте $data['slot'] ?? fallback (для каждой тяжелой
+        // indexed-переменной перечислено в докблоке файла шаблона).
         ob_start();
         include $file;
         return ob_get_clean();

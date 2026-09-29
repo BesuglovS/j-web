@@ -1,11 +1,11 @@
 <?php
-$classId = (int)($classId ?? 0);
-$className = (string)($className ?? '');
-$students = $students ?? [];
-$student = $student ?? null;
-$bySubject = $bySubject ?? [];
-$homeworks = $homeworks ?? [];
-$remarks = $remarks ?? [];
+$classId = (int)($data['classId'] ?? 0);
+$className = (string)($data['className'] ?? '');
+$students = $data['students'] ?? [];
+$student = $data['student'] ?? null;
+$bySubject = $data['bySubject'] ?? [];
+$homeworks = $data['homeworks'] ?? [];
+$remarks = $data['remarks'] ?? [];
 $statusLabels = ['done'=>'Выполнено','partial'=>'Частично','not_done'=>'Не выполнено'];
 ?>
 <div class="flex justify-between items-center mb-4">

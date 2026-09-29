@@ -103,16 +103,20 @@ deploy.ps1, j.nayanovaacademy.ru (nginx)
 1. `.env` → SSH-переменные (`DEPLOY_SSH_HOST/PORT/USER/KEY/REMOTE_PATH`); `icacls` ключа.
 2. `-SkipBuild` пропускает `npm install`/`npm run build` в `assets-src/`.
 3. Проверяет наличие всех шести директорий (`public, src, templates, data, db, runtime`).
-4. `tar` (без `node_modules`, `__pycache__`, `app.db*`) → SSH. Удалённо: бэкап `db/`+`runtime/` в `/tmp` →
-   `rm -rf` webroot → восстановление данных → распаковка → `chown www-data:www-data` + `chmod 775`.
-5. Деплой nginx-конфига + `nginx -t && systemctl reload nginx`.
-
+4. `tar` (без `node_modules`, `__pycache__`, `app.db*`) → SSH. Удалённо: `find $remotePath ...`
+   (сохраняются только `db/` и `runtime/`, хозяйка — www-data) → распаковка от deploy-пользователя
+   (`--touch --no-same-permissions --no-overwrite-dir`, чтобы не ломать каталог www-data).
+5. Деплой nginx-конфига через `sudo -n /usr/local/sbin/deploy-nginx.sh <site>` (хелпер сам
+   валидирует `nginx -t` и откатывает при ошибке). Прямого root нет.
 ⚠️ Известный баг `deploy.ps1`: секция nginx использует `$portArg`, который нигде не объявлен — на
 нестандартном SSH-порту nginx-деплой молча уйдёт на 22. Учитывать при работе с портами.
 
 ## 🔒 Безопасность
 
-- Никогда не печатать/коммитить `.env` и `ssh-private.key` (`G:\WebSites\na\`).
+- Никогда не печатать/коммитить `.env` и ключи (`ssh-deploy.key` в `C:\websites\na\`).
 - `ParentController::child()` явно проверяет принадлежность ребёнка родителю (иначе 403) — не ослаблять.
 - Разлогин SSO-пользователей редиректит на портал `/api/logout.php`.
-- Рендер через `extract()` — избегать коллизий имён между данными страницы и переменными лейаута.
+- **Рендер — явные именованные слоты (сентябрь 2026):** `View::compile()` больше НЕ делает
+  `extract()`. Шаблоны получают только массив `$data` и читают свои слоты явно:
+  `$var = $data['var'] ?? fallback;` в начале файла. Новые шаблоны — придерживаться того же:
+  никакой магической засыпки переменных; коллизии с лейаутом/фреймворком невозможны.

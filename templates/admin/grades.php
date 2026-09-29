@@ -1,11 +1,11 @@
 <?php
-$classes = $classes ?? [];
-$quarters = $quarters ?? [];
-$subjects = $subjects ?? [];
-$classId = (int)($classId ?? 0);
-$quarterId = (int)($quarterId ?? 0);
-$subjectId = (int)($subjectId ?? 0);
-$grades = $grades ?? [];
+$classes = $data['classes'] ?? [];
+$quarters = $data['quarters'] ?? [];
+$subjects = $data['subjects'] ?? [];
+$classId = (int)($data['classId'] ?? 0);
+$quarterId = (int)($data['quarterId'] ?? 0);
+$subjectId = (int)($data['subjectId'] ?? 0);
+$grades = $data['grades'] ?? [];
 $students = $grades['students'] ?? [];
 $markSets = $grades['markSets'] ?? [];
 $subjectList = ($subjectId ? array_filter($subjects, fn($s)=>(int)$s['id']===$subjectId) : $subjects);

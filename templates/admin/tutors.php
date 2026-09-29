@@ -1,8 +1,8 @@
 <?php
-$rows = $rows ?? [];
-$classes = $classes ?? [];
-$edit = $edit ?? null;
-$editClassIds = $editClassIds ?? [];
+$rows = $data['rows'] ?? [];
+$classes = $data['classes'] ?? [];
+$edit = $data['edit'] ?? null;
+$editClassIds = $data['editClassIds'] ?? [];
 ?>
 <div class="card overflow-hidden">
   <table class="table">

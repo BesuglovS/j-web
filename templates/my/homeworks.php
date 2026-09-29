@@ -1,6 +1,6 @@
 <?php
-$student = $student ?? [];
-$rows = $rows ?? [];
+$student = $data['student'] ?? [];
+$rows = $data['rows'] ?? [];
 $statusLabels = ['done'=>'Выполнено','partial'=>'Частично','not_done'=>'Не выполнено'];
 ?>
 <div class="card overflow-hidden">

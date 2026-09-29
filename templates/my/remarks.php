@@ -1,4 +1,4 @@
-<?php $student = $student ?? []; $rows = $rows ?? []; ?>
+<?php $student = $data['student'] ?? []; $rows = $data['rows'] ?? []; ?>
 <div class="card overflow-hidden">
   <table class="table">
     <thead><tr><th>Дата</th><th>Предмет</th><th>Замечание</th></tr></thead>

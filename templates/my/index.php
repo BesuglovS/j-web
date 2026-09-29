@@ -1,9 +1,9 @@
 <?php
-$student = $student ?? [];
-$lastMarks = $lastMarks ?? [];
-$pendingHw = $pendingHw ?? [];
-$remarks = $remarks ?? [];
-$progress = $progress ?? null;
+$student = $data['student'] ?? [];
+$lastMarks = $data['lastMarks'] ?? [];
+$pendingHw = $data['pendingHw'] ?? [];
+$remarks = $data['remarks'] ?? [];
+$progress = $data['progress'] ?? null;
 $name = trim($student['last_name'].' '.$student['first_name'].' '.$student['middle_name']);
 ?>
 <div class="card mb-4 p-4">

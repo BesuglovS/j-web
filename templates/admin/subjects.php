@@ -1,6 +1,6 @@
-<?php $rows = $rows ?? []; ?>
-<?php $classes = $classes ?? []; ?>
-<?php $edit = $edit ?? null; ?>
+<?php $rows = $data['rows'] ?? []; ?>
+<?php $classes = $data['classes'] ?? []; ?>
+<?php $edit = $data['edit'] ?? null; ?>
 <div class="card overflow-hidden">
   <table class="table">
     <thead><tr><th>Класс</th><th>Название</th><th>Сокращение</th><th></th></tr></thead>

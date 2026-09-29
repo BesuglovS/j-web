@@ -1,4 +1,4 @@
-<?php $classes = $classes ?? []; ?>
+<?php $classes = $data['classes'] ?? []; ?>
 <div class="card p-6">
   <h3 class="font-semibold mb-4">Мои классы</h3>
   <?php if (!$classes): ?>

@@ -1,4 +1,4 @@
-<?php $parent = $parent ?? []; $children = $children ?? []; ?>
+<?php $parent = $data['parent'] ?? []; $children = $data['children'] ?? []; ?>
 <div class="card p-6">
   <h3 class="font-semibold mb-4">Мои дети</h3>
   <?php if (!$children): ?>

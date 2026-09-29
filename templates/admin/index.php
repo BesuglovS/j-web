@@ -1,4 +1,4 @@
-<?php $stats = $stats ?? []; ?>
+<?php $stats = $data['stats'] ?? []; ?>
 <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
   <a href="/admin/classes" class="card p-4 hover:shadow-md">
     <div class="text-3xl font-bold text-slate-800"><?php echo (int)$stats['classes']; ?></div>

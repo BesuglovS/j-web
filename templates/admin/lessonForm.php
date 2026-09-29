@@ -1,7 +1,7 @@
 <?php
-$row = $row ?? null;
-$classes = $classes ?? [];
-$subjects = $subjects ?? [];
+$row = $data['row'] ?? null;
+$classes = $data['classes'] ?? [];
+$subjects = $data['subjects'] ?? [];
 ?>
 <div class="card max-w-2xl p-6">
   <h3 class="font-semibold mb-4"><?php echo $row ? 'Редактировать занятие' : 'Новое занятие'; ?></h3>

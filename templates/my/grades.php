@@ -1,4 +1,4 @@
-<?php $student = $student ?? []; $bySubject = $bySubject ?? []; ?>
+<?php $student = $data['student'] ?? []; $bySubject = $data['bySubject'] ?? []; ?>
 <?php if (!$bySubject): ?>
   <div class="card p-6 text-slate-500">Оценок пока нет.</div>
 <?php endif; ?>
