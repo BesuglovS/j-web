@@ -103,7 +103,17 @@
           }
       }
     ?>
-    <div class="card overflow-x-auto max-w-full overscroll-x-contain">
+    <div class="pp-results">
+      <div class="mb-2 flex items-center justify-end">
+        <label class="inline-flex items-center gap-2 cursor-pointer select-none text-sm text-slate-600" title="Растянуть таблицу на всю ширину экрана">
+          <input type="checkbox" id="pp-full-width" class="sr-only peer" checked>
+          <span class="relative inline-flex h-5 w-9 items-center rounded-full bg-slate-300 transition-colors peer-checked:bg-blue-600
+                       after:absolute after:left-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow after:transition-transform
+                       peer-checked:after:translate-x-4"></span>
+          <span>100% ширины</span>
+        </label>
+      </div>
+    <div class="pp-table-wrap card overflow-x-auto overscroll-x-contain">
       <table class="table text-sm min-w-max">
         <thead>
           <tr>
@@ -212,6 +222,7 @@
           </tr>
         </tbody>
       </table>
+    </div>
     </div>
 
     <div class="mt-3 text-xs text-slate-500 space-y-1">

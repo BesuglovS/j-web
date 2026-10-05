@@ -54,6 +54,17 @@
   .alert-success {
     @apply p-3 rounded bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm;
   }
+  /* Таблица python-курса: обычная ширина — в пределах макета (max-w-6xl);
+     режим «100% ширины» (по умолчанию) растягивает до краёв вьюпорта. */
+  .pp-table-wrap {
+    @apply mx-auto max-w-6xl;
+  }
+  .pp-results:has(#pp-full-width:checked) .pp-table-wrap {
+    width: 100vw;
+    max-width: none;
+    margin-left: calc(50% - 50vw);
+    margin-right: calc(50% - 50vw);
+  }
 }
 
 @layer base {
@@ -62,5 +73,10 @@
   }
   summary {
     cursor: pointer;
+  }
+  /* В режиме 100% ширины full-bleed таблица может чуть вылезать из-за скроллбара —
+     clip убирает горизонтальный скролл, не создавая новый scroll-контейнер (sticky не ломается). */
+  body:has(#pp-full-width:checked) {
+    overflow-x: clip;
   }
 }
