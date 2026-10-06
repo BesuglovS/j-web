@@ -4,6 +4,7 @@ $child = $data['child'] ?? [];
 $bySubject = $data['bySubject'] ?? [];
 $homeworks = $data['homeworks'] ?? [];
 $remarks = $data['remarks'] ?? [];
+$progress = $data['progress'] ?? null;
 $name = trim($child['last_name'].' '.$child['first_name'].' '.$child['middle_name']);
 $statusLabels = ['done'=>'Выполнено','partial'=>'Частично','not_done'=>'Не выполнено'];
 ?>
@@ -65,3 +66,5 @@ $statusLabels = ['done'=>'Выполнено','partial'=>'Частично','not
     <?php if (!$remarks): ?><p class="text-slate-400 text-sm">Замечаний нет.</p><?php endif; ?>
   </div>
 </div>
+
+<?php echo View::partial('partials/python_student_progress', ['progress' => $progress, 'refreshUrl' => '/parent/child/' . (int)$child['id'] . '?refresh=1']); ?>

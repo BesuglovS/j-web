@@ -10,7 +10,7 @@
 <?php $taskFrom = (int)($data['taskFrom'] ?? 1); ?>
 <?php $taskTo = (int)($data['taskTo'] ?? $maxLessons); ?>
 <div class="mb-4">
-  <form method="get" action="/admin/python-progress" class="flex flex-wrap items-end gap-3 bg-white border border-slate-200 rounded-lg p-3">
+  <form method="get" action="<?php echo e($data['formAction'] ?? '/admin/python-progress'); ?>" class="flex flex-wrap items-end gap-3 bg-white border border-slate-200 rounded-lg p-3">
     <div>
       <label class="block text-xs text-slate-500 mb-1">Класс</label>
       <select name="class_id" class="border border-slate-300 rounded px-2 py-1.5 text-sm">
@@ -193,13 +193,27 @@
       }
     ?>
     <div class="pp-results">
-      <div class="mb-2 flex items-center justify-end">
+      <div class="mb-2 flex flex-wrap items-center justify-end gap-x-5 gap-y-2">
         <label class="inline-flex items-center gap-2 cursor-pointer select-none text-sm text-slate-600" title="Растянуть таблицу на всю ширину экрана">
           <input type="checkbox" id="pp-full-width" class="sr-only peer" checked>
           <span class="relative inline-flex h-5 w-9 items-center rounded-full bg-slate-300 transition-colors peer-checked:bg-blue-600
                        after:absolute after:left-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow after:transition-transform
                        peer-checked:after:translate-x-4"></span>
           <span>100% ширины</span>
+        </label>
+        <label class="inline-flex items-center gap-2 cursor-pointer select-none text-sm text-slate-600" title="Показывать столбцы «Баллы» и «Оценка»">
+          <input type="checkbox" id="pp-show-points" class="sr-only peer" checked>
+          <span class="relative inline-flex h-5 w-9 items-center rounded-full bg-slate-300 transition-colors peer-checked:bg-blue-600
+                       after:absolute after:left-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow after:transition-transform
+                       peer-checked:after:translate-x-4"></span>
+          <span>Баллы и оценка</span>
+        </label>
+        <label class="inline-flex items-center gap-2 cursor-pointer select-none text-sm text-slate-600" title="Дополнительно показывать отдельные столбцы баллов по квизам и задачам (общий «Баллы» сохраняется)">
+          <input type="checkbox" id="pp-split-points" class="sr-only peer">
+          <span class="relative inline-flex h-5 w-9 items-center rounded-full bg-slate-300 transition-colors peer-checked:bg-indigo-600
+                       after:absolute after:left-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow after:transition-transform
+                       peer-checked:after:translate-x-4"></span>
+          <span>Баллы квизов/задач отдельно</span>
         </label>
       </div>
     <div class="pp-table-wrap card overflow-x-auto overscroll-x-contain">
@@ -220,8 +234,10 @@
                 <?php endif; ?>
               </th>
             <?php endfor; ?>
-            <th class="sticky top-0 z-20 bg-slate-50 text-center whitespace-nowrap border-l border-slate-200" title="Баллы: квизы на 100% + решённые задачи (диапазоны задаются в фильтре)">Баллы</th>
-            <th class="sticky top-0 z-20 bg-slate-50 text-center whitespace-nowrap border-l border-slate-200" title="Оценка из баллов">Оценка</th>
+            <th class="pp-col-points pp-col-total sticky top-0 z-20 bg-slate-50 text-center whitespace-nowrap border-l border-slate-200" title="Баллы: квизы на 100% + решённые задачи (диапазоны задаются в фильтре)">Баллы</th>
+            <th class="pp-col-points pp-col-quiz sticky top-0 z-20 bg-slate-50 text-center whitespace-nowrap border-l border-slate-200" title="Баллы за квизы, сданные на 100% (уроки диапазона квизов)">Баллы квизов</th>
+            <th class="pp-col-points pp-col-task sticky top-0 z-20 bg-slate-50 text-center whitespace-nowrap border-l border-slate-200" title="Баллы за решённые задачи (уроки диапазона задач)">Баллы задач</th>
+            <th class="pp-col-grade sticky top-0 z-20 bg-slate-50 text-center whitespace-nowrap border-l border-slate-200" title="Оценка из баллов">Оценка</th>
           </tr>
         </thead>
         <tbody>
@@ -283,8 +299,10 @@
                 <?php endif; ?>
               <?php endfor; ?>
               <?php $sp = $studentPoints[$i]; ?>
-              <td class="text-center whitespace-nowrap border-l border-slate-200 font-medium" title="Квизы на 100%: <?php echo (int)$sp['quiz']; ?> · решено задач: <?php echo (int)$sp['task']; ?>"><?php echo (int)$sp['points']; ?></td>
-              <td class="text-center whitespace-nowrap border-l border-slate-200">
+              <td class="pp-col-points pp-col-total text-center whitespace-nowrap border-l border-slate-200 font-medium" title="Квизы на 100%: <?php echo (int)$sp['quiz']; ?> · решено задач: <?php echo (int)$sp['task']; ?>"><?php echo (int)$sp['points']; ?></td>
+              <td class="pp-col-points pp-col-quiz text-center whitespace-nowrap border-l border-slate-200 font-medium" title="Баллы за квизы, сданные на 100%"><?php echo (int)$sp['quiz']; ?></td>
+              <td class="pp-col-points pp-col-task text-center whitespace-nowrap border-l border-slate-200 font-medium" title="Баллы за решённые задачи"><?php echo (int)$sp['task']; ?></td>
+              <td class="pp-col-grade text-center whitespace-nowrap border-l border-slate-200">
                 <?php if ($sp['grade'] !== null): ?>
                   <span class="inline-block px-1.5 rounded font-medium <?php echo $gradeColor($sp['grade']); ?>"><?php echo (int)$sp['grade']; ?></span>
                 <?php else: ?>
@@ -320,12 +338,17 @@
               </td>
             <?php endfor; ?>
             <?php
-              $avgPoints = $students ? array_sum(array_column($studentPoints, 'points')) / count($students) : null;
+              $studentCount = $students ? count($students) : 0;
+              $avgPoints = $studentCount ? array_sum(array_column($studentPoints, 'points')) / $studentCount : null;
+              $avgQuizPoints = $studentCount ? array_sum(array_column($studentPoints, 'quiz')) / $studentCount : null;
+              $avgTaskPoints = $studentCount ? array_sum(array_column($studentPoints, 'task')) / $studentCount : null;
               $gradeList = array_values(array_filter(array_column($studentPoints, 'grade'), fn($g) => $g !== null));
               $avgGrade = $gradeList ? array_sum($gradeList) / count($gradeList) : null;
             ?>
-            <td class="text-center border-l border-slate-200 text-slate-600 text-xs" title="Средние баллы по классу"><?php echo $avgPoints !== null ? 'ср. ' . e(number_format($avgPoints, 1, ',', ' ')) : '—'; ?></td>
-            <td class="text-center border-l border-slate-200 text-slate-600 text-xs" title="Средняя оценка по классу"><?php echo $avgGrade !== null ? 'ср. ' . e(number_format($avgGrade, 2, ',', ' ')) : '—'; ?></td>
+            <td class="pp-col-points pp-col-total text-center border-l border-slate-200 text-slate-600 text-xs" title="Средние баллы по классу"><?php echo $avgPoints !== null ? 'ср. ' . e(number_format($avgPoints, 1, ',', ' ')) : '—'; ?></td>
+            <td class="pp-col-points pp-col-quiz text-center border-l border-slate-200 text-slate-600 text-xs" title="Средние баллы за квизы"><?php echo $avgQuizPoints !== null ? 'ср. ' . e(number_format($avgQuizPoints, 1, ',', ' ')) : '—'; ?></td>
+            <td class="pp-col-points pp-col-task text-center border-l border-slate-200 text-slate-600 text-xs" title="Средние баллы за задачи"><?php echo $avgTaskPoints !== null ? 'ср. ' . e(number_format($avgTaskPoints, 1, ',', ' ')) : '—'; ?></td>
+            <td class="pp-col-grade text-center border-l border-slate-200 text-slate-600 text-xs" title="Средняя оценка по классу"><?php echo $avgGrade !== null ? 'ср. ' . e(number_format($avgGrade, 2, ',', ' ')) : '—'; ?></td>
           </tr>
         </tbody>
       </table>
@@ -340,7 +363,8 @@
       <p>«·» — данные по уроку отсутствуют (в т.ч. уроки вне диапазона, где ученики ещё ничего не решали).</p>
       <p>Диапазон уроков выбирается в фильтре выше; по умолчанию — с первого по последний урок с результатами в классе.</p>
       <p><b>Баллы</b> — число уроков, квиз которых сдан на 100%, плюс суммарно решённых задач; диапазоны уроков для квизов и задач задаются отдельно в фильтре.
-        <b>Оценка</b>: меньше половины максимума — 2; вторая половина делится на три равные части — 3, 4 и 5.</p>
+        <b>Оценка</b>: меньше половины максимума — 2; вторая половина делится на три равные части — 3, 4 и 5.
+        Переключатель «Баллы и оценка» скрывает эти столбцы, «Баллы квизов/задач отдельно» добавляет столбцы баллов по квизам и задачам (к общему столбцу «Баллы»).</p>
       <p><a class="text-indigo-600 underline" href="<?php echo e($pyUrl); ?>" target="_blank">Открыть python-курс</a></p>
     </div>
   <?php endif; ?>

@@ -2,11 +2,12 @@
 declare(strict_types=1);
 
 /**
- * Прогресс текущего ученика по python-курсу: квизы уроков (python-web) и
- * решённые задачи контестов (contest-web). Данные берутся по HTTP от
- * серверных API соседних проектов под SSO-сессией самого ученика
- * (кука auth_session, как в AuthClient), поэтому доступны только
- * «свои» данные. Ответы кэшируются в сессии (TTL 5 минут).
+ * Прогресс ученика по python-курсу: квизы уроков (python-web) и решённые
+ * задачи контестов (contest-web). Для страницы /my данные берутся под
+ * SSO-сессией самого ученика (кука auth_session, как в AuthClient) — только
+ * «свои». Для родителя (карточка ребёнка) те же отчёты запрашиваются
+ * сервер-к-серверу по external_id ученика (доверие — по IP на стороне API).
+ * Ответы кэшируются в сессии (TTL 5 минут).
  */
 class StudentProgressService
 {
@@ -14,19 +15,38 @@ class StudentProgressService
 
     /**
      * Квизы ученика (python-web sandbox/progress.php).
+     * При $studentId — сервер-к-сервер чтение прогресса конкретного ученика
+     * (карточка ребёнка у родителя); иначе — «свой» прогресс по SSO-куке.
      * Возвращает ['progress' => [{lesson_number, completed, quiz_score}...]] или null при ошибке.
      */
-    public static function myPythonProgress(bool $bypassCache = false): ?array
+    public static function myPythonProgress(bool $bypassCache = false, ?int $studentId = null): ?array
     {
+        if ($studentId !== null) {
+            return self::apiGet(
+                config()['python_progress_url'] . '?user_id=' . $studentId,
+                'py_u_' . $studentId,
+                $bypassCache,
+                true
+            );
+        }
         return self::apiGet(config()['python_progress_url'], 'py_my', $bypassCache);
     }
 
     /**
      * Решённые задачи по контестам (contest-web api/my_progress).
+     * При $studentId — сервер-к-сервер чтение прогресса конкретного ученика.
      * Возвращает ['contests' => {"<id>": {solved, total}}] или null при ошибке.
      */
-    public static function myContestProgress(bool $bypassCache = false): ?array
+    public static function myContestProgress(bool $bypassCache = false, ?int $studentId = null): ?array
     {
+        if ($studentId !== null) {
+            return self::apiGet(
+                config()['contest_my_progress_url'] . '&user_id=' . $studentId,
+                'ct_u_' . $studentId,
+                $bypassCache,
+                true
+            );
+        }
         return self::apiGet(config()['contest_my_progress_url'], 'ct_my', $bypassCache);
     }
 
@@ -41,8 +61,23 @@ class StudentProgressService
      */
     public static function mySummary(bool $bypassCache = false): ?array
     {
-        $quizRaw = self::myPythonProgress($bypassCache);
-        $contestRaw = self::myContestProgress($bypassCache);
+        return self::summary(null, $bypassCache);
+    }
+
+    /**
+     * Сводка по прогрессу конкретного ученика (для родителя, карточка ребёнка).
+     * Данные запрашиваются сервер-к-серверу по external_id ученика.
+     * Возвращает ту же структуру, что mySummary(), или null.
+     */
+    public static function studentSummary(int $studentId, bool $bypassCache = false): ?array
+    {
+        return self::summary($studentId, $bypassCache);
+    }
+
+    private static function summary(?int $studentId, bool $bypassCache): ?array
+    {
+        $quizRaw = self::myPythonProgress($bypassCache, $studentId);
+        $contestRaw = self::myContestProgress($bypassCache, $studentId);
         if ($quizRaw === null && $contestRaw === null) {
             return null;
         }
@@ -143,7 +178,7 @@ class StudentProgressService
         return $map;
     }
 
-    private static function apiGet(string $url, string $cacheKey, bool $bypassCache = false): ?array
+    private static function apiGet(string $url, string $cacheKey, bool $bypassCache = false, bool $server = false): ?array
     {
         if (!$bypassCache && session_status() === PHP_SESSION_ACTIVE) {
             $cached = $_SESSION['sp_' . $cacheKey] ?? null;
@@ -153,8 +188,10 @@ class StudentProgressService
             }
         }
 
+        // Серверный вызов (карточка ребёнка у родителя): без куки, target
+        // ученик передаётся параметром user_id, доверие — по IP на стороне API.
         $cookedCookie = '';
-        if (!empty($_COOKIE['auth_session'])) {
+        if (!$server && !empty($_COOKIE['auth_session'])) {
             // В куку допускаются не все символы — оставим безопасные.
             $safe = preg_replace('/[^A-Za-z0-9,_\-]/', '', (string) $_COOKIE['auth_session']);
             if ($safe !== '') {

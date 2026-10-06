@@ -32,6 +32,40 @@ class QuizProgressService
     }
 
     /**
+     * Сводка по классу через сервер-к-сервер вызовы (без SSO-куки) — для тьютора:
+     * j-web обращается к API соседних проектов со своего сервера (доверие — по IP,
+     * ALLOWED_SERVER_IPS на стороне python-web/contest-web). Админ продолжает
+     * использовать вызовы под своей сессией (classSummary()).
+     */
+    public static function classSummaryServer(int $groupId, bool $bypassCache = false): array
+    {
+        return self::classSummary($groupId, [
+            'python'  => self::pythonClassProgressServer($groupId, $bypassCache),
+            'contest' => self::contestClassProgressServer($groupId, $bypassCache),
+        ]);
+    }
+
+    private static function pythonClassProgressServer(int $groupId, bool $bypassCache): ?array
+    {
+        return self::apiGet(
+            config()['python_admin_url'] . '?action=class_progress&group_id=' . $groupId,
+            'py_prog_s_' . $groupId,
+            $bypassCache,
+            true
+        );
+    }
+
+    private static function contestClassProgressServer(int $groupId, bool $bypassCache): ?array
+    {
+        return self::apiGet(
+            config()['contest_admin_url'] . '&group_id=' . $groupId,
+            'ct_prog_s_' . $groupId,
+            $bypassCache,
+            true
+        );
+    }
+
+    /**
      * Сводка по классу: объединяет квизы и решённые задачи урока.
      * Возвращает [
      *   'students'    => [{id, name, lessons: {num: ['quiz' => int|null, 'solved' => int, 'total' => int]}}...],
@@ -46,8 +80,13 @@ class QuizProgressService
     public static function classSummary(int $groupId, ?array $inject = null, bool $bypassCache = false): array
     {
         $lessonContests = config()['python_lesson_contests'];
-        $quizRaw = $inject['python'] ?? self::pythonClassProgress($groupId, $bypassCache);
-        $contestRaw = $inject['contest'] ?? self::contestClassProgress($groupId, $bypassCache);
+        if ($inject !== null) {
+            $quizRaw = $inject['python'] ?? null;
+            $contestRaw = $inject['contest'] ?? null;
+        } else {
+            $quizRaw = self::pythonClassProgress($groupId, $bypassCache);
+            $contestRaw = self::contestClassProgress($groupId, $bypassCache);
+        }
 
         $errors = [];
         if ($quizRaw === null) {
@@ -133,7 +172,7 @@ class QuizProgressService
         ];
     }
 
-    private static function apiGet(string $url, string $cacheKey, bool $bypassCache = false): ?array
+    private static function apiGet(string $url, string $cacheKey, bool $bypassCache = false, bool $server = false): ?array
     {
         if (!$bypassCache && session_status() === PHP_SESSION_ACTIVE) {
             $cached = $_SESSION['qp_' . $cacheKey] ?? null;
@@ -143,8 +182,10 @@ class QuizProgressService
             }
         }
 
+        // Серверный вызов (кабинет тьютора): без куки, доверие — по IP на
+        // стороне API соседних проектов.
         $cookedCookie = '';
-        if (!empty($_COOKIE['auth_session'])) {
+        if (!$server && !empty($_COOKIE['auth_session'])) {
             // В куку допускаются не все символы — оставим безопасные.
             $safe = preg_replace('/[^A-Za-z0-9,_\-]/', '', (string) $_COOKIE['auth_session']);
             if ($safe !== '') {

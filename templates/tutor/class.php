@@ -6,6 +6,7 @@ $student = $data['student'] ?? null;
 $bySubject = $data['bySubject'] ?? [];
 $homeworks = $data['homeworks'] ?? [];
 $remarks = $data['remarks'] ?? [];
+$progress = $data['progress'] ?? null;
 $statusLabels = ['done'=>'Выполнено','partial'=>'Частично','not_done'=>'Не выполнено'];
 ?>
 <div class="flex justify-between items-center mb-4">
@@ -97,5 +98,10 @@ $statusLabels = ['done'=>'Выполнено','partial'=>'Частично','not
     <?php if (!$remarks): ?><p class="text-slate-400 text-sm">Замечаний нет.</p><?php endif; ?>
   </div>
 </div>
+
+<?php echo View::partial('partials/python_student_progress', [
+  'progress' => $progress,
+  'refreshUrl' => '/tutor/class/' . (int)$classId . '?student_id=' . (int)$student['id'] . '&refresh=1',
+]); ?>
 <?php endif; ?>
 <?php endif; ?>

@@ -41,6 +41,7 @@ $__content = (string)($data['__content'] ?? '');
       <?php elseif ($role === 'tutor'): ?>
         <a href="/tutor" class="px-3 py-1.5 rounded hover:bg-slate-700">Мои классы</a>
         <a href="/tutor/grades" class="px-3 py-1.5 rounded hover:bg-slate-700">Оценки</a>
+        <a href="/tutor/python" class="px-3 py-1.5 rounded hover:bg-slate-700">Python-курс</a>
       <?php elseif ($role === 'parent'): ?>
         <a href="/parent" class="px-3 py-1.5 rounded hover:bg-slate-700">Мои дети</a>
       <?php endif; ?>

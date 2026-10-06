@@ -65,6 +65,25 @@
     margin-left: calc(50% - 50vw);
     margin-right: calc(50% - 50vw);
   }
+  /* Столбцы баллов/оценки в таблице python-курса — переключатели без JS
+     (те же peer-checkbox'ы внутри .pp-results, что и «100% ширины»):
+     #pp-show-points — показать/скрыть «Баллы» и «Оценка»;
+     #pp-split-points — дополнительно показать столбцы баллов по квизам и задачам
+     (общий столбец «Баллы» при этом сохраняется).
+     Порядок правил важен: сокрытие по #pp-show-points идёт последним,
+     чтобы при выключенных баллах не проступали раздельные столбцы. */
+  .pp-col-quiz,
+  .pp-col-task {
+    display: none;
+  }
+  .pp-results:has(#pp-split-points:checked) .pp-col-quiz,
+  .pp-results:has(#pp-split-points:checked) .pp-col-task {
+    display: table-cell;
+  }
+  .pp-results:has(#pp-show-points:not(:checked)) .pp-col-points,
+  .pp-results:has(#pp-show-points:not(:checked)) .pp-col-grade {
+    display: none;
+  }
 }
 
 @layer base {

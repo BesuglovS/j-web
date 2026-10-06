@@ -69,6 +69,7 @@ $r->get('/my/remarks',           'StudentController@remarks');
 // ---- Тьютор (классный руководитель): read-only просмотр своих классов ----
 $r->get('/tutor',        'TutorController@index');
 $r->get('/tutor/grades', 'TutorController@grades');
+$r->get('/tutor/python', 'TutorController@pythonProgress');
 $r->get('/tutor/class/{id}', 'TutorController@classDetail');
 
 // ---- Родитель ----

@@ -126,6 +126,53 @@ class TutorController
     }
 
     /**
+     * Успеваемость по python-курсу для своих классов: квизы python-web и
+     * задачи contest-web по каждому ученику (аналог /admin/python-progress,
+     * но только классы тьютора). Данные — сервер-к-сервер (без SSO-куки).
+     */
+    public function pythonProgress(): string
+    {
+        $this->boot();
+        $classes = $this->myClasses();
+        $classId = (int)($_GET['class_id'] ?? 0);
+        $selected = null;
+        $summary = null;
+
+        if ($classId) {
+            foreach ($classes as $c) {
+                if ((int)$c['id'] === $classId) {
+                    $selected = $c;
+                    break;
+                }
+            }
+            // доступ только к своим классам (чужой class_id — 403)
+            if (!$selected) {
+                http_response_code(403);
+                exit('Доступ запрещён.');
+            }
+            if ((int)($selected['external_id'] ?? 0) > 0) {
+                $bypassCache = isset($_GET['refresh']) && $_GET['refresh'] === '1';
+                $summary = QuizProgressService::classSummaryServer((int)$selected['external_id'], $bypassCache);
+            } else {
+                flash_set('admin_error', 'У класса нет привязки к порталу (external_id) — выполните синхронизацию классов.');
+            }
+        }
+
+        $maxLessons = (int)(config()['python_max_lessons'] ?? 50);
+        $slots = PythonProgressView::slots($summary, $maxLessons, $_GET);
+
+        return View::render('admin/python_progress', array_merge([
+            'classId'    => $classId,
+            'classes'    => $classes,
+            'selected'   => $selected,
+            'summary'    => $summary,
+            'title'      => 'Python-курс (мои классы)',
+            'maxLessons' => $maxLessons,
+            'formAction' => '/tutor/python',
+        ], $slots));
+    }
+
+    /**
      * Детальный просмотр класса: для выбранного ученика — все оценки
      * (по предметам со средней), домашние задания со статусами и замечания.
      */
@@ -208,6 +255,18 @@ class TutorController
             $remarks = $rem->fetchAll();
         }
 
+        // Прогресс по python-курсу выбранного ученика (сервер-к-сервер по external_id).
+        $progress = null;
+        if ($student) {
+            $externalId = (int)($student['external_id'] ?? 0);
+            if ($externalId > 0) {
+                $progress = StudentProgressService::studentSummary(
+                    $externalId,
+                    isset($_GET['refresh']) && $_GET['refresh'] === '1'
+                );
+            }
+        }
+
         return View::render('tutor/class', [
             'title'     => 'Класс ' . $className,
             'classId'   => $classId,
@@ -217,6 +276,7 @@ class TutorController
             'bySubject' => $bySubject,
             'homeworks' => $homeworks,
             'remarks'   => $remarks,
+            'progress'  => $progress,
         ]);
     }
 }

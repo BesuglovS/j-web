@@ -876,62 +876,16 @@ class AdminController
         }
         $title = 'Успеваемость Python-курса';
         $maxLessons = (int)(config()['python_max_lessons'] ?? 50);
-        // Итоговый тест как виртуальный урок: sentinel = maxLessons+1
-        $finalN = $maxLessons + 1;
-        // Диапазон отображаемых уроков; по умолчанию 1..last(данные класса)
-        $lessonFrom = 1;
-        $lessonTo = $summary['max_lesson'] ?? 0;
-        if ($lessonTo < 1) {
-            // данных нет вовсе: показываем минимум первое занятие, чтобы селекты имели смысл
-            $lessonTo = 0;
-        }
-        if (isset($_GET['lesson_from'])) {
-            $lessonFrom = max(1, min($maxLessons, (int)$_GET['lesson_from']));
-        }
-        if (isset($_GET['lesson_to'])) {
-            $lessonTo = max(0, min($maxLessons, (int)$_GET['lesson_to']));
-        }
-        // «Итог» можно выбрать в любом из селектов
-        if (isset($_GET['lesson_from']) && (int)$_GET['lesson_from'] === $finalN) {
-            $lessonFrom = $finalN;
-        }
-        if (isset($_GET['lesson_to']) && (int)$_GET['lesson_to'] === $finalN) {
-            $lessonTo = $finalN;
-        }
-        if ($lessonTo > 0 && $lessonTo < $lessonFrom) {
-            // автопомена при инверсном диапазоне (работает и с sentinel «Итог»)
-            [$lessonFrom, $lessonTo] = [$lessonTo, $lessonFrom];
-        }
+        $slots = PythonProgressView::slots($summary, $maxLessons, $_GET);
 
-        // Диапазоны начисления баллов независимы от диапазона отображения:
-        // баллы квизов — уроки с квизом, сданным на 100%; задачи — решённые задачи.
-        $lastQuizLesson = 0;
-        $lastTaskLesson = 0;
-        foreach (($summary['students'] ?? []) as $st) {
-            foreach (($st['lessons'] ?? []) as $num => $l) {
-                $num = (int)$num;
-                if ($num < 1) {
-                    continue;
-                }
-                if (($l['quiz'] ?? null) !== null && $num > $lastQuizLesson) {
-                    $lastQuizLesson = $num;
-                }
-                if (($l['total'] ?? null) !== null && (int)$l['total'] > 0 && $num > $lastTaskLesson) {
-                    $lastTaskLesson = $num;
-                }
-            }
-        }
-        $quizFrom = isset($_GET['quiz_from']) ? max(1, min($maxLessons, (int)$_GET['quiz_from'])) : 1;
-        $quizTo   = isset($_GET['quiz_to'])   ? max(1, min($maxLessons, (int)$_GET['quiz_to']))   : ($lastQuizLesson ?: $maxLessons);
-        $taskFrom = isset($_GET['task_from']) ? max(1, min($maxLessons, (int)$_GET['task_from'])) : 1;
-        $taskTo   = isset($_GET['task_to'])   ? max(1, min($maxLessons, (int)$_GET['task_to']))   : ($lastTaskLesson ?: $maxLessons);
-        if ($quizTo < $quizFrom) {
-            [$quizFrom, $quizTo] = [$quizTo, $quizFrom];
-        }
-        if ($taskTo < $taskFrom) {
-            [$taskFrom, $taskTo] = [$taskTo, $taskFrom];
-        }
-
-        return View::render('admin/python_progress', compact('classId', 'classes', 'selected', 'summary', 'title', 'maxLessons', 'finalN', 'lessonFrom', 'lessonTo', 'quizFrom', 'quizTo', 'taskFrom', 'taskTo'));
+        return View::render('admin/python_progress', array_merge([
+            'classId'    => $classId,
+            'classes'    => $classes,
+            'selected'   => $selected,
+            'summary'    => $summary,
+            'title'      => $title,
+            'maxLessons' => $maxLessons,
+            'formAction' => '/admin/python-progress',
+        ], $slots));
     }
 }

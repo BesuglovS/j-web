@@ -95,12 +95,24 @@ class ParentController
         $remarks = $pdo->prepare('SELECT r.text, r.created_at, l.date, sub.name AS subject, c.name AS class_name FROM lesson_remarks r JOIN lessons l ON l.id=r.lesson_id JOIN subjects sub ON sub.id=l.subject_id JOIN classes c ON c.id=l.class_id WHERE r.student_id=? ORDER BY r.created_at DESC');
         $remarks->execute([$sid]);
 
+        // Прогресс по python-курсу и контестам (карточка ребёнка) —
+        // сервер-к-сервер по external_id (auth-web user id) ребёнка.
+        $progress = null;
+        $externalId = (int)($child['external_id'] ?? 0);
+        if ($externalId > 0) {
+            $progress = StudentProgressService::studentSummary(
+                $externalId,
+                isset($_GET['refresh']) && $_GET['refresh'] === '1'
+            );
+        }
+
         return View::render('parent/child', [
             'parent' => $p,
             'child' => $child,
             'bySubject' => $bySubject,
             'homeworks' => $hw->fetchAll(),
             'remarks' => $remarks->fetchAll(),
+            'progress' => $progress,
         ]);
     }
 }
