@@ -85,12 +85,12 @@ class Database
         // Минуты опоздания для статуса 'late' (мобильное приложение).
         self::addColumn($pdo, 'attendance', 'late_minutes', 'INTEGER');
         // Переписывание оценок: каждая строка marks — попытка в группе
-        // (student, предмет урока, work_type). is_retake=1 — попытка переписывания
-        // (привязана к уроку исходной оценки); attempt_date — машиночитаемая дата
-        // попытки (переписывания — дата пересдачи); is_current=1 — итоговая
-        // (последняя по attempt_date) попытка группы, только она участвует в
-        // средних. При добавлении колонок в существующую БД все оценки
-        // считаем итоговыми.
+        // «клетка журнала» (student, урок, work_type). is_retake=1 — попытка
+        // переписывания (привязана к уроку, из которого ставится); attempt_date —
+        // машиночитаемая дата попытки (переписывания — дата пересдачи);
+        // is_current=1 — итоговая (последняя по attempt_date) попытка группы,
+        // только она участвует в средних. При добавлении колонок в существующую
+        // БД все оценки считаем итоговыми.
         self::addColumn($pdo, 'marks', 'is_retake', 'INTEGER NOT NULL DEFAULT 0');
         self::addColumn($pdo, 'marks', 'is_current', 'INTEGER NOT NULL DEFAULT 1');
         // Не в migration.sql: для существующих БД индекс создаётся только здесь,
@@ -114,6 +114,17 @@ class Database
                 }
             }
         }
+        // Однократный пересчёт is_current под группировку «клетка журнала»
+        // (ученик, урок, work_type). До этого итоговая попытка считалась по
+        // предмету — работы одного типа сливались. schema_meta создаётся
+        // в migration.sql; ключ не даёт пересчитывать при каждом запросе.
+        $pdo->exec('CREATE TABLE IF NOT EXISTS schema_meta (key TEXT PRIMARY KEY, value TEXT)');
+        $st = $pdo->query("SELECT value FROM schema_meta WHERE key='marks_group_scope'");
+        if ($st->fetchColumn() === false) {
+            \MarkService::repairAllCurrent();
+            $pdo->prepare("INSERT OR REPLACE INTO schema_meta (key, value) VALUES ('marks_group_scope', 'lesson')")->execute();
+        }
+
         $indexes = $pdo->query("PRAGMA index_list('classes')")->fetchAll();
         $hasClassIdx = false;
         foreach ($indexes as $ix) {

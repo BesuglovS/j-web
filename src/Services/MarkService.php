@@ -3,11 +3,12 @@
 /**
  * Единая логика записи оценок с учётом переписывания.
  *
- * Каждая строка marks — попытка в группе (student, предмет урока, work_type).
- * Попытка переписывания (is_retake=1) привязывается к уроку исходной оценки
- * (видна в клетке исходной даты); машиночитаемая дата попытки — attempt_date
- * (у переписывания это введённая вручную дата пересдачи, дата также
- * дублируется в comment для пользователей).
+ * Каждая строка marks — попытка в группе «клетка журнала» (ученик, урок,
+ * work_type). Работы одного типа за разные уроки — независимые группы, поэтому
+ * пересдача одной работы не может привязаться к другой работе того же типа.
+ * Попытка переписывания (is_retake=1) привязывается к уроку (клетке), из
+ * которой ставится; машиночитаемая дата попытки — attempt_date (у
+ * переписывания это введённая вручную дата пересдачи).
  * Итоговая попытка группы (is_current=1) — последняя по attempt_date
  * (при равных датах приоритет у переписывания, затем по id); только она
  * участвует в средних.
@@ -40,38 +41,23 @@ class MarkService
                     ->execute([$studentId, $lessonId, (int)$value, $workType, $comment, self::lessonDate($lessonId) ?? gmdate('Y-m-d')]);
             }
         }
-        $subjectId = self::lessonSubject($lessonId);
-        if ($subjectId) {
-            self::recomputeCurrent($studentId, $subjectId, $workType);
-        }
+        self::recomputeCurrent($studentId, $lessonId, $workType);
     }
 
     /**
      * Попытка переписывания: вставляется/обновляется с привязкой к уроку
-     * исходной (текущей) оценки группы. Если текущей оценки нет — привязка
-     * к $fallbackLessonId (урок, с которого ставится).
+     * (клетке), из которой ставится, — то есть к текущей открытой оценке,
+     * а не к более поздней работе того же типа.
      * $attemptDate — машиночитаемая дата пересдачи (Y-m-d); при пустой/невалидной
      * значение берётся из комментария, затем сегодняшний день.
      * Возвращает id строки.
      */
-    public static function saveRetake(int $studentId, int $subjectId, string $workType, int $value, string $comment, int $fallbackLessonId = 0, ?int $markId = null, ?string $attemptDate = null): int
+    public static function saveRetake(int $studentId, string $workType, int $value, string $comment, int $lessonId, ?int $markId = null, ?string $attemptDate = null): int
     {
         $pdo = Database::pdo();
         $attemptDate = self::normalizeAttemptDate($attemptDate, $comment);
-        // Урок исходной оценки — lesson_id текущей (последней) попытки группы
-        $lessonId = $fallbackLessonId;
-        if ($markId === null || $markId <= 0) {
-            $st = $pdo->prepare(
-                'SELECT m.lesson_id FROM marks m
-                 JOIN lessons l ON l.id=m.lesson_id
-                 WHERE m.student_id=? AND l.subject_id=? AND m.work_type=? AND m.is_current=1
-                 ORDER BY m.id DESC LIMIT 1'
-            );
-            $st->execute([$studentId, $subjectId, $workType]);
-            $origin = $st->fetchColumn();
-            if ($origin !== false && (int)$origin > 0) {
-                $lessonId = (int)$origin;
-            }
+        if ($lessonId <= 0) {
+            throw new InvalidArgumentException('saveRetake: lessonId is required');
         }
         if ($markId !== null && $markId > 0) {
             // Повторное сохранение существующей попытки (пересылка списка с UI)
@@ -83,7 +69,7 @@ class MarkService
                 ->execute([$studentId, $lessonId, $value, $workType, $comment, $attemptDate]);
             $id = (int)$pdo->lastInsertId();
         }
-        self::recomputeCurrent($studentId, $subjectId, $workType);
+        self::recomputeCurrent($studentId, $lessonId, $workType);
         return $id;
     }
 
@@ -102,38 +88,38 @@ class MarkService
             $id = (int)$id;
             if ($id <= 0) continue;
             $st = $pdo->prepare(
-                'SELECT m.id, l.subject_id, m.work_type FROM marks m JOIN lessons l ON l.id=m.lesson_id
+                'SELECT m.id, m.lesson_id, m.work_type FROM marks m
                  WHERE m.id=? AND m.student_id=?'
             );
             $st->execute([$id, $studentId]);
             $row = $st->fetch();
             if ($row) {
-                $affected[] = [(int)$row['subject_id'], (string)$row['work_type']];
+                $affected[] = [(int)$row['lesson_id'], (string)$row['work_type']];
             }
         }
         $placeholders = implode(',', array_fill(0, count($affected), '?'));
         $idsInt = array_map('intval', $ids);
         $pdo->prepare("DELETE FROM marks WHERE id IN ($placeholders) AND student_id=?")
             ->execute([...$idsInt, $studentId]);
-        foreach ($affected as [$subjectId, $workType]) {
-            self::recomputeCurrent($studentId, $subjectId, $workType);
+        foreach ($affected as [$lessonId, $workType]) {
+            self::recomputeCurrent($studentId, $lessonId, $workType);
         }
     }
 
     /**
-     * Пересчитать is_current для группы (ученик, предмет, work_type).
+     * Пересчитать is_current для группы «клетка журнала»
+     * (ученик, урок, work_type).
      * Итоговая попытка — с максимальной attempt_date; при равных датах
      * приоритет у переписывания, далее по id (последняя вставленная).
      */
-    public static function recomputeCurrent(int $studentId, int $subjectId, string $workType): void
+    public static function recomputeCurrent(int $studentId, int $lessonId, string $workType): void
     {
         $pdo = Database::pdo();
         $st = $pdo->prepare(
-            'SELECT m.id, m.attempt_date, m.is_retake FROM marks m
-             JOIN lessons l ON l.id = m.lesson_id
-             WHERE m.student_id = ? AND l.subject_id = ? AND m.work_type = ?'
+            'SELECT id, attempt_date, is_retake FROM marks
+             WHERE student_id = ? AND lesson_id = ? AND work_type = ?'
         );
-        $st->execute([$studentId, $subjectId, $workType]);
+        $st->execute([$studentId, $lessonId, $workType]);
         $rows = $st->fetchAll();
         if (!$rows) {
             return;
@@ -157,17 +143,17 @@ class MarkService
     }
 
     /**
-     * Одноразовый пересчёт is_current по всем группам (устранение состояний,
-     * возникших до правила «итоговая = попытка с самой поздней датой»).
+     * Одноразовый пересчёт is_current по всем группам «клетка журнала»
+     * (ученик, урок, work_type): нужен при переходе от группировки «по предмету»
+     * к группировке «по уроку» и для устранения старых рассогласований.
      */
     public static function repairAllCurrent(): int
     {
         $groups = Database::pdo()->query(
-            'SELECT DISTINCT m.student_id, l.subject_id, m.work_type
-             FROM marks m JOIN lessons l ON l.id = m.lesson_id'
+            'SELECT DISTINCT student_id, lesson_id, work_type FROM marks'
         )->fetchAll();
         foreach ($groups as $g) {
-            self::recomputeCurrent((int)$g['student_id'], (int)$g['subject_id'], (string)$g['work_type']);
+            self::recomputeCurrent((int)$g['student_id'], (int)$g['lesson_id'], (string)$g['work_type']);
         }
         return count($groups);
     }

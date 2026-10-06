@@ -117,8 +117,10 @@ class ApiController
             $marks[$m['student_id']][] = $m;
         }
 
-        // Текущие (итоговые) попытки учеников класса по предмету урока:
-        // UI переписывания показывает «за этот тип уже есть оценка и когда»
+        // Итоговые (последние) попытки работ учеников класса по предмету урока:
+        // по одной на клетку (ученик, урок, work_type); UI переписывания
+        // показывает «за эту работу уже есть оценка и когда» только для
+        // открытого урока.
         $currentMarks = [];
         $st = $pdo->prepare(
             'SELECT m.id, m.student_id, m.value, m.work_type, m.comment, m.is_retake, m.attempt_date, l.id AS lesson_id, l.date AS lesson_date
@@ -214,7 +216,6 @@ class ApiController
         $data = $this->input();
         $marks = $data['marks'] ?? [];
         $removeIds = $data['remove_mark_ids'] ?? [];
-        $subjectId = MarkService::lessonSubject($lessonId);
         $pdo = Database::pdo();
 
         // Формат: marks[<student_id>] = [
@@ -222,8 +223,8 @@ class ApiController
         // ]
         // Обычная запись заменяет базовые (is_retake=0) оценки ученика за урок
         // (пустой список удаляет их). Запись с retake=1 — попытка переписывания:
-        // привязывается к уроку исходной оценки (MarkService), дата пересдачи —
-        // в comment; id>0 — обновление существующей попытки.
+        // привязывается к этому же уроку (клетке), дата пересдачи — отдельным
+        // полем date; id>0 — обновление существующей попытки.
         // remove_mark_ids — явное удаление попыток (переписываний).
         foreach ((array)$removeIds as $sid => $ids) {
             MarkService::deleteByIds((array)$ids, (int)$sid);
@@ -272,9 +273,8 @@ class ApiController
                 // берётся из комментария/текущего дня (MarkService)
                 $date = isset($entry['date']) ? (string)$entry['date'] : null;
                 if (!empty($entry['retake'])) {
-                    if ($subjectId) {
-                        MarkService::saveRetake($studentId, $subjectId, $workType, $value, $comment, $lessonId, $markId, $date);
-                    }
+                    // Пересдача привязывается к уроку (клетке), из которой ставится
+                    MarkService::saveRetake($studentId, $workType, $value, $comment, $lessonId, $markId, $date);
                 } else {
                     MarkService::saveBase($studentId, $lessonId, $workType, $value, $comment);
                 }
