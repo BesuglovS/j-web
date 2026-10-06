@@ -5,6 +5,10 @@
 <?php $finalN = (int)($data['finalN'] ?? $maxLessons + 1); ?>
 <?php $lessonFrom = (int)($data['lessonFrom'] ?? 1); ?>
 <?php $lessonTo = (int)($data['lessonTo'] ?? 0); ?>
+<?php $quizFrom = (int)($data['quizFrom'] ?? 1); ?>
+<?php $quizTo = (int)($data['quizTo'] ?? $maxLessons); ?>
+<?php $taskFrom = (int)($data['taskFrom'] ?? 1); ?>
+<?php $taskTo = (int)($data['taskTo'] ?? $maxLessons); ?>
 <div class="mb-4">
   <form method="get" action="/admin/python-progress" class="flex flex-wrap items-end gap-3 bg-white border border-slate-200 rounded-lg p-3">
     <div>
@@ -35,6 +39,40 @@
         <?php endfor; ?>
         <option value="<?php echo $finalN; ?>" <?php echo $lessonTo === $finalN ? 'selected' : ''; ?>>Итог</option>
       </select>
+    </div>
+    <div class="flex flex-wrap items-end gap-3 border-l border-slate-200 pl-3">
+      <div>
+        <label class="block text-xs text-slate-500 mb-1" title="Баллы квизов: уроки, квиз которых сдан на 100%">Баллы квизов: с урока</label>
+        <select name="quiz_from" class="border border-slate-300 rounded px-2 py-1.5 text-sm">
+          <?php for ($n = 1; $n <= $maxLessons; $n++): ?>
+            <option value="<?php echo $n; ?>" <?php echo $n === $quizFrom ? 'selected' : ''; ?>>Урок <?php echo $n; ?></option>
+          <?php endfor; ?>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs text-slate-500 mb-1">Баллы квизов: по урок</label>
+        <select name="quiz_to" class="border border-slate-300 rounded px-2 py-1.5 text-sm">
+          <?php for ($n = 1; $n <= $maxLessons; $n++): ?>
+            <option value="<?php echo $n; ?>" <?php echo $n === $quizTo ? 'selected' : ''; ?>>Урок <?php echo $n; ?></option>
+          <?php endfor; ?>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs text-slate-500 mb-1" title="Баллы задач: сумма решённых задач по контестам уроков">Баллы задач: с урока</label>
+        <select name="task_from" class="border border-slate-300 rounded px-2 py-1.5 text-sm">
+          <?php for ($n = 1; $n <= $maxLessons; $n++): ?>
+            <option value="<?php echo $n; ?>" <?php echo $n === $taskFrom ? 'selected' : ''; ?>>Урок <?php echo $n; ?></option>
+          <?php endfor; ?>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs text-slate-500 mb-1">Баллы задач: по урок</label>
+        <select name="task_to" class="border border-slate-300 rounded px-2 py-1.5 text-sm">
+          <?php for ($n = 1; $n <= $maxLessons; $n++): ?>
+            <option value="<?php echo $n; ?>" <?php echo $n === $taskTo ? 'selected' : ''; ?>>Урок <?php echo $n; ?></option>
+          <?php endfor; ?>
+        </select>
+      </div>
     </div>
     <button class="btn-primary">Показать</button>
     <?php if ($selected): ?>
@@ -102,6 +140,57 @@
               $finalScores[$s['id']] = (int)$s['lessons'][-1]['quiz'];
           }
       }
+
+      // Максимум баллов: каждый урок в диапазоне квизов даёт максимум 1 балл,
+      // задачи — суммарное число задач (total) по урокам диапазона задач.
+      $maxQuiz = max(0, $quizTo - $quizFrom + 1);
+      $taskTotals = [];
+      foreach ($students as $s) {
+          foreach ($s['lessons'] as $num => $l) {
+              $num = (int)$num;
+              if ($num >= $taskFrom && $num <= $taskTo && $l['total'] !== null && (int)$l['total'] > 0) {
+                  $taskTotals[$num] = max($taskTotals[$num] ?? 0, (int)$l['total']);
+              }
+          }
+      }
+      $maxTask = array_sum($taskTotals);
+      $maxPoints = $maxQuiz + $maxTask;
+      // Оценка: < половины — 2; вторая половина делится на 3 равные части — 3/4/5.
+      $gradeOf = function (int $points) use ($maxPoints): ?int {
+          if ($maxPoints <= 0) return null;
+          $half = $maxPoints / 2;
+          $third = $half / 3;
+          if ($points < $half) return 2;
+          if ($points < $half + $third) return 3;
+          if ($points < $half + 2 * $third) return 4;
+          return 5;
+      };
+      $gradeColor = function (?int $g): string {
+          return match ($g) {
+              5 => 'bg-emerald-100 text-emerald-700',
+              4 => 'bg-indigo-100 text-indigo-700',
+              3 => 'bg-amber-100 text-amber-700',
+              2 => 'bg-red-100 text-red-700',
+              default => 'bg-slate-100 text-slate-500',
+          };
+      };
+      $studentPoints = [];
+      foreach ($students as $i => $s) {
+          $quizPoints = 0;
+          for ($n = $quizFrom; $n <= $quizTo; $n++) {
+              if (isset($s['lessons'][$n]) && $s['lessons'][$n]['quiz'] !== null && (int)$s['lessons'][$n]['quiz'] >= 100) {
+                  $quizPoints++;
+              }
+          }
+          $taskPoints = 0;
+          for ($n = $taskFrom; $n <= $taskTo; $n++) {
+              if (isset($s['lessons'][$n])) {
+                  $taskPoints += (int)$s['lessons'][$n]['solved'];
+              }
+          }
+          $points = $quizPoints + $taskPoints;
+          $studentPoints[$i] = ['quiz' => $quizPoints, 'task' => $taskPoints, 'points' => $points, 'grade' => $gradeOf($points)];
+      }
     ?>
     <div class="pp-results">
       <div class="mb-2 flex items-center justify-end">
@@ -131,10 +220,12 @@
                 <?php endif; ?>
               </th>
             <?php endfor; ?>
+            <th class="sticky top-0 z-20 bg-slate-50 text-center whitespace-nowrap border-l border-slate-200" title="Баллы: квизы на 100% + решённые задачи (диапазоны задаются в фильтре)">Баллы</th>
+            <th class="sticky top-0 z-20 bg-slate-50 text-center whitespace-nowrap border-l border-slate-200" title="Оценка из баллов">Оценка</th>
           </tr>
         </thead>
         <tbody>
-            <?php foreach ($students as $s): ?>
+            <?php foreach ($students as $i => $s): ?>
               <tr class="hover:bg-slate-50 group">
               <td class="sticky left-0 z-10 bg-white border-r border-slate-200 group-hover:bg-slate-50 font-medium whitespace-nowrap"><?php echo e($s['name']); ?></td>
               <?php for ($n = $renderFrom; $n <= $renderTo; $n++): ?>
@@ -191,6 +282,15 @@
                   </td>
                 <?php endif; ?>
               <?php endfor; ?>
+              <?php $sp = $studentPoints[$i]; ?>
+              <td class="text-center whitespace-nowrap border-l border-slate-200 font-medium" title="Квизы на 100%: <?php echo (int)$sp['quiz']; ?> · решено задач: <?php echo (int)$sp['task']; ?>"><?php echo (int)$sp['points']; ?></td>
+              <td class="text-center whitespace-nowrap border-l border-slate-200">
+                <?php if ($sp['grade'] !== null): ?>
+                  <span class="inline-block px-1.5 rounded font-medium <?php echo $gradeColor($sp['grade']); ?>"><?php echo (int)$sp['grade']; ?></span>
+                <?php else: ?>
+                  <span class="text-slate-300">—</span>
+                <?php endif; ?>
+              </td>
             </tr>
           <?php endforeach; ?>
           <?php // строка итогов по классу ?>
@@ -219,6 +319,13 @@
                 <?php endif; ?>
               </td>
             <?php endfor; ?>
+            <?php
+              $avgPoints = $students ? array_sum(array_column($studentPoints, 'points')) / count($students) : null;
+              $gradeList = array_values(array_filter(array_column($studentPoints, 'grade'), fn($g) => $g !== null));
+              $avgGrade = $gradeList ? array_sum($gradeList) / count($gradeList) : null;
+            ?>
+            <td class="text-center border-l border-slate-200 text-slate-600 text-xs" title="Средние баллы по классу"><?php echo $avgPoints !== null ? 'ср. ' . e(number_format($avgPoints, 1, ',', ' ')) : '—'; ?></td>
+            <td class="text-center border-l border-slate-200 text-slate-600 text-xs" title="Средняя оценка по классу"><?php echo $avgGrade !== null ? 'ср. ' . e(number_format($avgGrade, 2, ',', ' ')) : '—'; ?></td>
           </tr>
         </tbody>
       </table>
@@ -232,6 +339,8 @@
         белый — квиз и задачи не пытались решать.</p>
       <p>«·» — данные по уроку отсутствуют (в т.ч. уроки вне диапазона, где ученики ещё ничего не решали).</p>
       <p>Диапазон уроков выбирается в фильтре выше; по умолчанию — с первого по последний урок с результатами в классе.</p>
+      <p><b>Баллы</b> — число уроков, квиз которых сдан на 100%, плюс суммарно решённых задач; диапазоны уроков для квизов и задач задаются отдельно в фильтре.
+        <b>Оценка</b>: меньше половины максимума — 2; вторая половина делится на три равные части — 3, 4 и 5.</p>
       <p><a class="text-indigo-600 underline" href="<?php echo e($pyUrl); ?>" target="_blank">Открыть python-курс</a></p>
     </div>
   <?php endif; ?>
