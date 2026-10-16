@@ -18,3 +18,5 @@ pass.md
 # ОС
 Thumbs.db
 .DS_Store
+# asu-win read-only grades export token
+db/export_token.txt

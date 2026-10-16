@@ -848,6 +848,34 @@ class AdminController
         return View::render('admin/grades', compact('classId', 'quarterId', 'subjectId', 'classes', 'quarters', 'subjects', 'grades'));
     }
 
+    /**
+     * Сводка оценок класса по предметам: по каждому предмету — список
+     * учеников с оценками и средним. Объединённые предметы (SubjectMerge)
+     * показываются одним блоком (см. GradeService::classSummary()).
+     */
+    public function classSummary(): string
+    {
+        $this->boot();
+        GroupService::ensureSynced();
+        StudentService::ensureSynced();
+        $classId = (int)($_GET['class_id'] ?? 0);
+        $quarterId = (int)($_GET['quarter_id'] ?? 0);
+        $subjectId = (int)($_GET['subject_id'] ?? 0);
+        $classes = Database::pdo()->query('SELECT * FROM classes ORDER BY grade, name')->fetchAll();
+        $quarters = Database::pdo()->query('SELECT * FROM quarters ORDER BY start_date')->fetchAll();
+        $subjects = [];
+        if ($classId) {
+            $st = Database::pdo()->prepare('SELECT * FROM subjects WHERE class_id=? ORDER BY name');
+            $st->execute([$classId]);
+            $subjects = $st->fetchAll();
+        }
+        $summary = GradeService::classSummary($classId, $quarterId, $subjectId);
+        $className = (string)($summary['class']['name'] ?? '');
+        return View::render('admin/class_summary', compact(
+            'classId', 'quarterId', 'subjectId', 'classes', 'quarters', 'subjects', 'className'
+        ) + ['groups' => $summary['groups'] ?? []]);
+    }
+
     // ================== Успеваемость по Python-курсу ==================
     public function pythonProgress(): string
     {

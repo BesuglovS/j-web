@@ -14,7 +14,7 @@ class PythonProgressView
      * @param array|null $summary    результат classSummary()/classSummaryServer()
      * @param int        $maxLessons всего уроков курса
      * @param array      $get        GET-параметры фильтра
-     * @return array{lessonFrom:int, lessonTo:int, quizFrom:int, quizTo:int, taskFrom:int, taskTo:int, finalN:int}
+     * @return array{lessonFrom:int, lessonTo:int, quizFrom:int, quizTo:int, taskFrom:int, taskTo:int, finalN:int, taskLimitOn:bool, taskLimit:int}
      */
     public static function slots(?array $summary, int $maxLessons, array $get): array
     {
@@ -73,6 +73,12 @@ class PythonProgressView
             [$taskFrom, $taskTo] = [$taskTo, $taskFrom];
         }
 
-        return compact('lessonFrom', 'lessonTo', 'quizFrom', 'quizTo', 'taskFrom', 'taskTo', 'finalN');
+        // Ограничение числа задач последнего урока диапазона задач: при включённом
+        // переключателе в общую сумму баллов идёт не более task_limit задач
+        // последнего урока; пустое значение = учитывать все задачи (как при выключенном).
+        $taskLimitOn = isset($get['task_limit_on']) && $get['task_limit_on'] === '1';
+        $taskLimit   = isset($get['task_limit']) ? max(0, (int)$get['task_limit']) : 0;
+
+        return compact('lessonFrom', 'lessonTo', 'quizFrom', 'quizTo', 'taskFrom', 'taskTo', 'finalN', 'taskLimitOn', 'taskLimit');
     }
 }

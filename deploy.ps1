@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Build and deploy PHP journal site (j.nayanovaacademy.ru) to remote server via SSH.
 
@@ -131,7 +131,8 @@ if ($DryRun) {
     & tar -czf $targz -C $tmpDir `
       --exclude node_modules `
       --exclude __pycache__ `
-      --exclude 'app.db' --exclude 'app.db-wal' --exclude 'app.db-shm' .
+      --exclude 'app.db' --exclude 'app.db-wal' --exclude 'app.db-shm' `
+      --exclude 'export_token.txt' .
     if ($LASTEXITCODE -ne 0) {
       Write-Host "  Archive creation failed" -ForegroundColor Red
       exit 1
@@ -175,6 +176,32 @@ if ($DryRun) {
   }
 
   Write-Host "  Done." -ForegroundColor Green
+}
+
+# ─── 3b. Provision read-only export token for asu-win ───
+# Токен хранится в .env (JWEB_EXPORT_TOKEN) и кладётся на сервер в db/export_token.txt
+# (вне webroot, переживает деплой). Без токена endpoint /api/export/grades отключён (503).
+$exportToken = [Environment]::GetEnvironmentVariable('JWEB_EXPORT_TOKEN')
+if ($exportToken) {
+  Write-Host "`n==> Provisioning export token (db/export_token.txt) ..." -ForegroundColor Cyan
+  if ($DryRun) {
+    Write-Host "  [DryRun] scp <token> ${remote}:$remotePath/db/export_token.txt" -ForegroundColor Yellow
+  } else {
+    $scpPortArg = if ($sshPort -ne '22') { "-P $sshPort " } else { '' }
+    $tmpToken = Join-Path $env:TEMP "jweb-export-token-$(Get-Random)"
+    try {
+      [System.IO.File]::WriteAllText($tmpToken, $exportToken.Trim(), (New-Object System.Text.UTF8Encoding($false)))
+      $scpCmd = "scp $scpPortArg$identityArg `"$tmpToken`" ${remote}:$remotePath/db/export_token.txt"
+      cmd /c $scpCmd
+      if ($LASTEXITCODE -ne 0) {
+        Write-Host "  Export token scp failed — экспорт оценок останется выключенным" -ForegroundColor Yellow
+      } else {
+        Write-Host "  Done." -ForegroundColor Green
+      }
+    } finally {
+      Remove-Item $tmpToken -ErrorAction SilentlyContinue
+    }
+  }
 }
 
 # ─── 4. Deploy nginx config ───

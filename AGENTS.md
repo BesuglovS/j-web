@@ -103,17 +103,52 @@ deploy.ps1, j.nayanovaacademy.ru (nginx)
 1. `.env` → SSH-переменные (`DEPLOY_SSH_HOST/PORT/USER/KEY/REMOTE_PATH`); `icacls` ключа.
 2. `-SkipBuild` пропускает `npm install`/`npm run build` в `assets-src/`.
 3. Проверяет наличие всех шести директорий (`public, src, templates, data, db, runtime`).
-4. `tar` (без `node_modules`, `__pycache__`, `app.db*`) → SSH. Удалённо: `find $remotePath ...`
+4. `tar` (без `node_modules`, `__pycache__`, `app.db*`, `export_token.txt`) → SSH. Удалённо: `find $remotePath ...`
    (сохраняются только `db/` и `runtime/`, хозяйка — www-data) → распаковка от deploy-пользователя
    (`--touch --no-same-permissions --no-overwrite-dir`, чтобы не ломать каталог www-data).
-5. Деплой nginx-конфига через `sudo -n /usr/local/sbin/deploy-nginx.sh <site>` (хелпер сам
+5. Провизионинг токена экспорта оценок: если в `.env` задан `JWEB_EXPORT_TOKEN`, он кладётся
+   через `scp` в `db/export_token.txt` (см. «Экспорт оценок для asu-win»).
+6. Деплой nginx-конфига через `sudo -n /usr/local/sbin/deploy-nginx.sh <site>` (хелпер сам
    валидирует `nginx -t` и откатывает при ошибке). Прямого root нет.
 ⚠️ Известный баг `deploy.ps1`: секция nginx использует `$portArg`, который нигде не объявлен — на
 нестандартном SSH-порту nginx-деплой молча уйдёт на 22. Учитывать при работе с портами.
 
+## 📤 Экспорт оценок для asu-win (`/api/export/grades`)
+
+Read-only JSON-выгрузка оценок журнала для проекта `C:\websites\na\asu-win`
+(перенос оценок преподавателя в АСУ РСО). Реализация — `ExportController@grades`
+(`src/Controllers/ExportController.php`), маршрут — `src/routes.php`.
+
+- **Доступ по секретному токену** (заголовок `X-Export-Token` или `?token=`),
+  сравнение `hash_equals`. Токен читается из файла **вне webroot**:
+  `<db>/export_token.txt` (первая строка). Файла нет/пуст → endpoint **503**
+  (выключен); неверный токен → **401**.
+- Токен провизионится `deploy.ps1` из `.env` (`JWEB_EXPORT_TOKEN`): кладётся в
+  `db/export_token.txt` через `scp`. Ключ в репозиторий не попадает (в `.gitignore`),
+  из tar-архива исключён. Один и тот же токен задаётся в `.env` обоих проектов.
+- Формат ответа совпадает с моделью `asu-win/jweb.py`:
+  `{generated, source, classes:[{class_id,name,subjects:[{subject_id,name,
+  lessons:[{lesson_id,date,topic,homework,marks:[{mark_id,student_id,fio,value,
+  work_type,comment,is_retake}]}]}]}]}`. Отдаются **все уроки** (не только с
+  оценками), с **темой** (`lessons.topic`) и **домашним заданием**
+  (`homeworks`: заголовок + описание, склеенные ` — `).
+- По умолчанию — только итоговые попытки (`marks.is_current=1`);
+  `?include_retakes=1` добавляет историю переписываний. Необязательные фильтры:
+  `class_id`, `subject_id`, `since`, `until` (Y-m-d).
+- nginx: путь без расширения → уходит во фронт-контроллер (ограничения
+  `.sql|.db|.md|.log` и кэш статики не затрагиваются).
+
+Проверка:
+
+```bash
+curl -H "X-Export-Token: <token>" https://j.nayanovaacademy.ru/api/export/grades
+```
+
 ## 🔒 Безопасность
 
 - Никогда не печатать/коммитить `.env` и ключи (`ssh-deploy.key` в `C:\websites\na\`).
+- Read-only экспорт `/api/export/grades` защищён токеном (`db/export_token.txt`); не
+  расширять выдачу и не снимать проверку без нужды.
 - `ParentController::child()` явно проверяет принадлежность ребёнка родителю (иначе 403) — не ослаблять.
 - Разлогин SSO-пользователей редиректит на портал `/api/logout.php`.
 - **Рендер — явные именованные слоты (сентябрь 2026):** `View::compile()` больше НЕ делает

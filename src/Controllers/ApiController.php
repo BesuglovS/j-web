@@ -209,6 +209,69 @@ class ApiController
         $this->json(['id' => $id], 201);
     }
 
+    /**
+     * Обновление занятия (сверка с расписанием): время начала и примечание
+     * (кабинет). note меняется только если ключ передан явно — так синхронизация
+     * времени не затирает примечание. Поля topic/lesson_type не трогаются.
+     */
+    public function lessonUpdate(array $params): void
+    {
+        $this->requireAdmin();
+        $lessonId = (int)$params[0];
+        $data = $this->input();
+        $startTime = trim((string)($data['start_time'] ?? ''));
+        $hasNote = array_key_exists('note', $data);
+        $note = $hasNote ? trim((string)$data['note']) : '';
+
+        $pdo = Database::pdo();
+        $st = $pdo->prepare('SELECT id FROM lessons WHERE id=?');
+        $st->execute([$lessonId]);
+        if (!$st->fetch()) {
+            $this->json(['error' => 'Урок не найден'], 404);
+        }
+
+        if ($hasNote) {
+            $pdo->prepare('UPDATE lessons SET start_time=?, note=? WHERE id=?')
+                ->execute([$startTime !== '' ? $startTime : null, $note !== '' ? $note : null, $lessonId]);
+        } else {
+            $pdo->prepare('UPDATE lessons SET start_time=? WHERE id=?')
+                ->execute([$startTime !== '' ? $startTime : null, $lessonId]);
+        }
+        $this->json(['ok' => true]);
+    }
+
+    /**
+     * Удаление занятия (сверка с расписанием). Защита: урок с оценками, ДЗ,
+     * замечаниями или посещаемостью не удаляется — 409 has_data.
+     */
+    public function lessonDelete(array $params): void
+    {
+        $this->requireAdmin();
+        $lessonId = (int)$params[0];
+        $pdo = Database::pdo();
+
+        $st = $pdo->prepare('SELECT id FROM lessons WHERE id=?');
+        $st->execute([$lessonId]);
+        if (!$st->fetch()) {
+            $this->json(['error' => 'Урок не найден'], 404);
+        }
+
+        $hasData = $pdo->prepare(
+            'SELECT (SELECT COUNT(*) FROM marks m WHERE m.lesson_id=l.id)
+                  + (SELECT COUNT(*) FROM homeworks h WHERE h.lesson_id=l.id)
+                  + (SELECT COUNT(*) FROM lesson_remarks r WHERE r.lesson_id=l.id)
+                  + (SELECT COUNT(*) FROM attendance a WHERE a.lesson_id=l.id)
+             FROM lessons l WHERE l.id=?'
+        );
+        $hasData->execute([$lessonId]);
+        if ((int)$hasData->fetchColumn() > 0) {
+            $this->json(['error' => 'has_data'], 409);
+        }
+
+        $pdo->prepare('DELETE FROM lessons WHERE id=?')->execute([$lessonId]);
+        $this->json(['ok' => true]);
+    }
+
     public function markSave(array $params): void
     {
         $this->requireAdmin();

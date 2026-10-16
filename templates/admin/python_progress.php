@@ -9,6 +9,8 @@
 <?php $quizTo = (int)($data['quizTo'] ?? $maxLessons); ?>
 <?php $taskFrom = (int)($data['taskFrom'] ?? 1); ?>
 <?php $taskTo = (int)($data['taskTo'] ?? $maxLessons); ?>
+<?php $taskLimitOn = (bool)($data['taskLimitOn'] ?? false); ?>
+<?php $taskLimitInput = (int)($data['taskLimit'] ?? 0); ?>
 <div class="mb-4">
   <form method="get" action="<?php echo e($data['formAction'] ?? '/admin/python-progress'); ?>" class="flex flex-wrap items-end gap-3 bg-white border border-slate-200 rounded-lg p-3">
     <div>
@@ -72,6 +74,20 @@
             <option value="<?php echo $n; ?>" <?php echo $n === $taskTo ? 'selected' : ''; ?>>Урок <?php echo $n; ?></option>
           <?php endfor; ?>
         </select>
+      </div>
+      <div class="pp-task-limit">
+        <label class="block text-xs text-slate-500 mb-1" title="Сколько задач последнего урока диапазона учитывать в баллах">Задач последнего урока</label>
+        <div class="flex items-center gap-2">
+          <label class="inline-flex items-center cursor-pointer select-none" title="Включить ограничение числа задач последнего урока (выключено — учитываются все задачи)">
+            <input type="checkbox" name="task_limit_on" value="1" class="sr-only peer" <?php echo $taskLimitOn ? 'checked' : ''; ?>>
+            <span class="relative inline-flex h-5 w-9 items-center rounded-full bg-slate-300 transition-colors peer-checked:bg-blue-600
+                         after:absolute after:left-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow after:transition-transform
+                         peer-checked:after:translate-x-4"></span>
+          </label>
+          <input type="number" name="task_limit" min="1" step="1" inputmode="numeric"
+                 value="<?php echo $taskLimitInput > 0 ? (int)$taskLimitInput : ''; ?>" placeholder="все"
+                 class="w-20 border border-slate-300 rounded px-2 py-1.5 text-sm" title="Количество задач последнего урока, идущих в зачёт (при включённом переключателе)">
+        </div>
       </div>
     </div>
     <button class="btn-primary">Показать</button>
@@ -153,7 +169,18 @@
               }
           }
       }
+      // Ограничение задач последнего урока диапазона: при включённом переключателе
+      // в зачёт идёт не более $taskLimit задач (пусто/больше — берутся все задачи урока).
+      $lastTaskLesson = $taskTotals ? max(array_keys($taskTotals)) : 0;
+      $taskLimit = null;
+      if ($taskLimitOn && $lastTaskLesson > 0) {
+          $total = (int)$taskTotals[$lastTaskLesson];
+          $taskLimit = ($taskLimitInput > 0 && $taskLimitInput < $total) ? $taskLimitInput : $total;
+      }
       $maxTask = array_sum($taskTotals);
+      if ($taskLimit !== null) {
+          $maxTask += $taskLimit - (int)$taskTotals[$lastTaskLesson];
+      }
       $maxPoints = $maxQuiz + $maxTask;
       // Оценка: < половины — 2; вторая половина делится на 3 равные части — 3/4/5.
       $gradeOf = function (int $points) use ($maxPoints): ?int {
@@ -185,7 +212,11 @@
           $taskPoints = 0;
           for ($n = $taskFrom; $n <= $taskTo; $n++) {
               if (isset($s['lessons'][$n])) {
-                  $taskPoints += (int)$s['lessons'][$n]['solved'];
+                  $solved = (int)$s['lessons'][$n]['solved'];
+                  if ($taskLimit !== null && $n === $lastTaskLesson && $solved > $taskLimit) {
+                      $solved = $taskLimit;
+                  }
+                  $taskPoints += $solved;
               }
           }
           $points = $quizPoints + $taskPoints;
@@ -216,6 +247,11 @@
           <span>Баллы квизов/задач отдельно</span>
         </label>
       </div>
+    <?php if ($taskLimit !== null): ?>
+      <div class="mb-2 text-xs text-slate-600 bg-blue-50 border border-blue-200 rounded px-3 py-1.5">
+        Для урока <?php echo (int)$lastTaskLesson; ?> в зачёт идут <b><?php echo (int)$taskLimit; ?></b> из <?php echo (int)$taskTotals[$lastTaskLesson]; ?> задач.
+      </div>
+    <?php endif; ?>
     <div class="pp-table-wrap card overflow-x-auto overscroll-x-contain">
       <table class="table text-sm min-w-max">
         <thead>
@@ -234,9 +270,9 @@
                 <?php endif; ?>
               </th>
             <?php endfor; ?>
-            <th class="pp-col-points pp-col-total sticky top-0 z-20 bg-slate-50 text-center whitespace-nowrap border-l border-slate-200" title="Баллы: квизы на 100% + решённые задачи (диапазоны задаются в фильтре)">Баллы</th>
+            <th class="pp-col-points pp-col-total sticky top-0 z-20 bg-slate-50 text-center whitespace-nowrap border-l border-slate-200" title="Баллы: квизы на 100% + решённые задачи (диапазоны задаются в фильтре; с учётом ограничения задач последнего урока)">Баллы</th>
             <th class="pp-col-points pp-col-quiz sticky top-0 z-20 bg-slate-50 text-center whitespace-nowrap border-l border-slate-200" title="Баллы за квизы, сданные на 100% (уроки диапазона квизов)">Баллы квизов</th>
-            <th class="pp-col-points pp-col-task sticky top-0 z-20 bg-slate-50 text-center whitespace-nowrap border-l border-slate-200" title="Баллы за решённые задачи (уроки диапазона задач)">Баллы задач</th>
+            <th class="pp-col-points pp-col-task sticky top-0 z-20 bg-slate-50 text-center whitespace-nowrap border-l border-slate-200" title="Баллы за решённые задачи (уроки диапазона задач; с учётом ограничения задач последнего урока)">Баллы задач</th>
             <th class="pp-col-grade sticky top-0 z-20 bg-slate-50 text-center whitespace-nowrap border-l border-slate-200" title="Оценка из баллов">Оценка</th>
           </tr>
         </thead>
@@ -365,6 +401,8 @@
       <p><b>Баллы</b> — число уроков, квиз которых сдан на 100%, плюс суммарно решённых задач; диапазоны уроков для квизов и задач задаются отдельно в фильтре.
         <b>Оценка</b>: меньше половины максимума — 2; вторая половина делится на три равные части — 3, 4 и 5.
         Переключатель «Баллы и оценка» скрывает эти столбцы, «Баллы квизов/задач отдельно» добавляет столбцы баллов по квизам и задачам (к общему столбцу «Баллы»).</p>
+      <p><b>Задач последнего урока</b> (фильтр) — при включённом переключателе в баллы идёт указанное число задач последнего урока диапазона задач (лишние решённые задачи сверх лимита не добавляют баллов).
+        Выключенный переключатель означает, что должны быть решены <b>все</b> задачи урока.</p>
       <p><a class="text-indigo-600 underline" href="<?php echo e($pyUrl); ?>" target="_blank">Открыть python-курс</a></p>
     </div>
   <?php endif; ?>

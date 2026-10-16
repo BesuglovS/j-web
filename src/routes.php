@@ -55,6 +55,8 @@ $r->post('/admin/homework/delete/{id}',    'AdminController@homeworkDelete');
 
 // итоги и отчёт
 $r->get('/admin/grades', 'AdminController@gradesIndex');
+// сводка класса по предметам (объединённые предметы — одним блоком)
+$r->get('/admin/class-summary', 'AdminController@classSummary');
 
 // успеваемость по python-курсу (квизы python-web + задачи contest-web)
 $r->get('/admin/python-progress', 'AdminController@pythonProgress');
@@ -84,6 +86,8 @@ $r->get('/api/v1/classes/{id}/subjects',    'ApiController@classSubjects');
 $r->get('/api/v1/lessons',                  'ApiController@lessons');
 $r->get('/api/v1/lessons/{id}',             'ApiController@lessonDetail');
 $r->post('/api/v1/lessons',                 'ApiController@lessonCreate');
+$r->post('/api/v1/lessons/{id}/update',     'ApiController@lessonUpdate');
+$r->post('/api/v1/lessons/{id}/delete',     'ApiController@lessonDelete');
 $r->post('/api/v1/lessons/{id}/marks',      'ApiController@markSave');
 $r->post('/api/v1/lessons/{id}/remarks',    'ApiController@remarkSave');
   $r->post('/api/v1/lessons/{id}/attendance', 'ApiController@attendanceSave');
@@ -97,5 +101,9 @@ $r->get('/api/v1/grades',                   'ApiController@grades');
 // Внутренний сервер-к-сервер эндпоинт: auth-web после изменения родителей
 // вызывает его с доверенного IP — мгновенный синк зеркала (ParentService)
 $r->post('/api/internal/parents-sync', 'ApiController@parentsSync');
+
+// Read-only экспорт оценок для asu-win (загрузка в АСУ РСО): доступ по
+// секретному токену (X-Export-Token / ?token=), см. ExportController.
+$r->get('/api/export/grades', 'ExportController@grades');
 
 return $r;

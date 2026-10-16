@@ -84,6 +84,10 @@
   .pp-results:has(#pp-show-points:not(:checked)) .pp-col-grade {
     display: none;
   }
+  /* Поле «Задач последнего урока»: при выключенном переключателе ввод недоступен. */
+  .pp-task-limit:has(input[name="task_limit_on"]:not(:checked)) input[name="task_limit"] {
+    @apply opacity-40 pointer-events-none;
+  }
 }
 
 @layer base {

@@ -31,6 +31,7 @@ $__content = (string)($data['__content'] ?? '');
         <a href="/admin/students" class="px-3 py-1.5 rounded hover:bg-slate-700">Студенты</a>
         <a href="/admin/tutors" class="px-3 py-1.5 rounded hover:bg-slate-700">Тьюторы</a>
         <a href="/admin/grades" class="px-3 py-1.5 rounded hover:bg-slate-700">Оценки</a>
+        <a href="/admin/class-summary" class="px-3 py-1.5 rounded hover:bg-slate-700">Сводка по предметам</a>
         <a href="/admin/python-progress" class="px-3 py-1.5 rounded hover:bg-slate-700">Python-курс</a>
         <a href="/admin/quarters" class="px-3 py-1.5 rounded hover:bg-slate-700">Периоды</a>
       <?php elseif ($role === 'student'): ?>
