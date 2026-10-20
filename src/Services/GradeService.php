@@ -58,14 +58,16 @@ foreach ($subjects as $sub) {
      * учеников с их оценками и средним баллом.
      *
      * Объединённые предметы (SubjectMerge: 9 класс — «Информатика» + «Труд»,
-     * 8 класс — «Информатика» + «Моделирование и пилотирование БАС»)
-     * показываются как один блок: оценки обоих предметов и общий средний.
+     * 8 класс — «Информатика» + «Моделирование и пилотирование БАС»,
+     * 7 класс — «Информатика» + «Инженерия БАС») показываются как один блок:
+     * оценки обоих предметов и общий средний.
      *
      * Возвращает: ['class' => строка класса, 'groups' => [...]]. В каждой
-     * группе: label, merged, subjects, subject_ids, lesson_count, avg,
-     * marks_count и students[] (student, marks[], avg, count). В средних
-     * участвуют только итоговые попытки (is_current=1), не итоговые —
-     * показываются в списке для контекста.
+     * группе: label, merged, subjects, subject_ids, lesson_count, dates
+     * (даты уроков группы по возрастанию — столбцы таблицы), avg, marks_count
+     * и students[] (student, marks[], by_date[дата => оценки], avg, count).
+     * В средних участвуют только итоговые попытки (is_current=1),
+     * не итоговые — показываются в списке для контекста.
      */
     public static function classSummary(int $classId, int $quarterId = 0, int $subjectId = 0): array
     {
@@ -127,17 +129,20 @@ foreach ($subjects as $sub) {
             $bySubject[(int)$m['subject_id']][] = $m;
         }
 
-        // количество уроков по предметам за период
-        $sql = 'SELECT subject_id, COUNT(*) AS cnt FROM lessons WHERE class_id=:cid';
+        // количество уроков по предметам за период и их даты (столбцы таблицы)
+        $sql = 'SELECT subject_id, date FROM lessons WHERE class_id=:cid';
         $ar = [':cid' => $classId];
         if ($from) { $sql .= ' AND date >= :from'; $ar[':from'] = $from; }
         if ($to)   { $sql .= ' AND date <= :to';   $ar[':to'] = $to; }
-        $sql .= ' GROUP BY subject_id';
+        $sql .= ' ORDER BY date, id';
         $st = $pdo->prepare($sql);
         $st->execute($ar);
         $lessonCounts = [];
+        $lessonDates = [];
         foreach ($st as $r) {
-            $lessonCounts[(int)$r['subject_id']] = (int)$r['cnt'];
+            $sid = (int)$r['subject_id'];
+            $lessonCounts[$sid] = ($lessonCounts[$sid] ?? 0) + 1;
+            $lessonDates[$sid][(string)$r['date']] = true;
         }
 
         // объединённые предметы (пара применяется, только если есть оба предмета)
@@ -174,9 +179,14 @@ foreach ($subjects as $sub) {
             }
 
             $lessonCount = 0;
+            $dates = [];
             foreach ($ids as $id) {
                 $lessonCount += $lessonCounts[$id] ?? 0;
+                foreach ($lessonDates[$id] ?? [] as $d => $_) {
+                    $dates[$d] = true;
+                }
             }
+            ksort($dates);
 
             $rows = [];
             $allValues = [];
@@ -193,7 +203,9 @@ foreach ($subjects as $sub) {
                     return strcmp((string)$a['date'], (string)$b['date']) ?: ((int)$a['id'] <=> (int)$b['id']);
                 });
                 $vals = [];
+                $byDate = [];
                 foreach ($sMarks as $m) {
+                    $byDate[(string)$m['date']][] = $m;
                     if ((int)$m['is_current']) {
                         $vals[] = (int)$m['value'];
                     }
@@ -202,6 +214,7 @@ foreach ($subjects as $sub) {
                 $rows[] = [
                     'student' => $s,
                     'marks'   => $sMarks,
+                    'by_date' => $byDate,
                     'avg'     => $vals ? round(array_sum($vals) / count($vals), 2) : null,
                     'count'   => count($vals),
                 ];
@@ -215,6 +228,7 @@ foreach ($subjects as $sub) {
                 'subjects'     => $groupSubjects,
                 'subject_ids'  => $ids,
                 'lesson_count' => $lessonCount,
+                'dates'        => array_keys($dates),
                 'students'     => $rows,
                 'avg'          => $allValues ? round(array_sum($allValues) / count($allValues), 2) : null,
                 'marks_count'  => count($allValues),

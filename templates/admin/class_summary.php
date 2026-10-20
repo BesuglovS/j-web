@@ -3,7 +3,8 @@
  * Сводка оценок класса по предметам.
  * Слоты: classes, quarters, subjects, classId, quarterId, subjectId,
  *        className, groups (см. GradeService::classSummary()).
- * Объединённые предметы (SubjectMerge) выводятся одним блоком.
+ * Объединённые предметы (SubjectMerge) выводятся одним блоком; оценки
+ * разложены по столбцам дат уроков, подсказка — тип работы и комментарий.
  */
 $classes = $data['classes'] ?? [];
 $quarters = $data['quarters'] ?? [];
@@ -64,56 +65,67 @@ $groups = $data['groups'] ?? [];
           Средний по классу: <b><?php echo $g['avg'] !== null ? e((string)$g['avg']) : '—'; ?></b>
         </div>
       </div>
+      <div class="overflow-x-auto">
       <table class="table">
         <thead>
           <tr>
-            <th>Ученик</th>
-            <th>Оценки</th>
+            <th class="sticky left-0 bg-slate-50 z-10">Ученик</th>
+            <?php foreach (($g['dates'] ?? []) as $d): ?>
+              <th class="text-center whitespace-nowrap" title="<?php echo e(date('d.m.Y', strtotime((string)$d))); ?>">
+                <?php echo e(date('d.m', strtotime((string)$d))); ?>
+              </th>
+            <?php endforeach; ?>
             <th class="text-center w-24">Средний</th>
           </tr>
         </thead>
         <tbody>
         <?php foreach ($g['students'] as $row): ?>
           <tr>
-            <td class="whitespace-nowrap">
+            <td class="sticky left-0 bg-white z-10 whitespace-nowrap">
               <?php echo e(trim((string)$row['student']['last_name'] . ' ' . (string)$row['student']['first_name'])); ?>
             </td>
-            <td>
-              <?php if (!$row['marks']): ?>
-                <span class="text-slate-300">—</span>
-              <?php else: ?>
-                <span class="flex flex-wrap gap-1">
-                <?php foreach ($row['marks'] as $m): ?>
-                  <?php
-                    $stale = !(int)($m['is_current'] ?? 1);
-                    $cls = $stale
-                      ? 'bg-slate-100 text-slate-300 line-through'
-                      : ((int)$m['value'] >= 4 ? 'bg-emerald-100 text-emerald-800'
-                        : ((int)$m['value'] === 3 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'));
-                    $tip = (string)$m['date'] . ' — ' . work_type_label($m['work_type'] ?? null);
-                    if (!empty($g['merged']) && !empty($m['subject_name'])) {
-                      $tip .= ' · ' . (string)$m['subject_name'];
-                    }
-                    if (!empty($m['comment'])) {
-                      $tip .= ' · ' . trim((string)$m['comment']);
-                    }
-                  ?>
-                  <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-semibold <?php echo $cls; ?>" title="<?php echo e($tip); ?>">
-                    <span class="text-[9px] font-normal opacity-75"><?php echo e(work_type_label($m['work_type'] ?? null)); ?></span>
-                    <?php echo (int)$m['value']; ?>
+            <?php foreach (($g['dates'] ?? []) as $d): ?>
+              <?php $cellMarks = $row['by_date'][$d] ?? []; ?>
+              <td class="text-center align-middle">
+                <?php if (!$cellMarks): ?>
+                  <span class="text-slate-200">·</span>
+                <?php else: ?>
+                  <span class="inline-flex flex-col items-center gap-0.5">
+                  <?php foreach ($cellMarks as $m): ?>
+                    <?php
+                      $stale = !(int)($m['is_current'] ?? 1);
+                      $cls = $stale
+                        ? 'bg-slate-100 text-slate-300 line-through'
+                        : ((int)$m['value'] >= 4 ? 'bg-emerald-100 text-emerald-800'
+                          : ((int)$m['value'] === 3 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'));
+                      $tip = date('d.m.Y', strtotime((string)$m['date'])) . ' — ' . work_type_label($m['work_type'] ?? null);
+                      if (!empty($g['merged']) && !empty($m['subject_name'])) {
+                        $tip .= ' · ' . (string)$m['subject_name'];
+                      }
+                      if (!empty($m['is_retake'])) {
+                        $tip .= ' · переписывание';
+                      }
+                      if (!empty($m['comment'])) {
+                        $tip .= "\n" . trim((string)$m['comment']);
+                      }
+                    ?>
+                    <span class="inline-flex items-center justify-center min-w-[1.25rem] px-1 py-0.5 rounded text-xs font-semibold <?php echo $cls; ?>" title="<?php echo e($tip); ?>">
+                      <?php echo (int)$m['value']; ?>
+                    </span>
+                  <?php endforeach; ?>
                   </span>
-                <?php endforeach; ?>
-                </span>
-              <?php endif; ?>
-            </td>
+                <?php endif; ?>
+              </td>
+            <?php endforeach; ?>
             <td class="text-center font-semibold"><?php echo $row['avg'] !== null ? e((string)$row['avg']) : '—'; ?></td>
           </tr>
         <?php endforeach; ?>
         <?php if (!$g['students']): ?>
-          <tr><td colspan="3" class="text-slate-400 text-center py-6">В классе нет активных учеников</td></tr>
+          <tr><td colspan="<?php echo count($g['dates'] ?? []) + 2; ?>" class="text-slate-400 text-center py-6">В классе нет активных учеников</td></tr>
         <?php endif; ?>
         </tbody>
       </table>
+      </div>
     </div>
   <?php endforeach; ?>
 <?php endif; ?>

@@ -5,10 +5,11 @@ declare(strict_types=1);
 /**
  * Объединение предметов в один (порт логики j-android util/SubjectMerge.kt).
  *
- * Поддерживаются две пары:
+ * Поддерживаются три пары:
  *  1) «Информатика» + «Труд (технология)» в 9 классах;
  *  2) «Информатика» + «Моделирование и пилотирование беспилотных
- *     авиационных систем» в 8 классах.
+ *     авиационных систем» в 8 классах;
+ *  3) «Информатика» + «Инженерия беспилотных авиационных систем» в 7 классах.
  *
  * Уроки, оценки и средний балл считаются общими; пара применяется к классу,
  * только если в его списке предметов присутствуют оба предмета пары.
@@ -18,6 +19,7 @@ class SubjectMerge
     private const INFORMATICS_NAME = 'ИНФОРМАТИКА';
     private const TRUD_PREFIX = 'ТРУД';
     private const UAV_SYSTEMS_PREFIX = 'МОДЕЛИРОВАНИЕИПИЛОТИРОВАНИЕ';
+    private const BAS_ENGINEERING_PREFIX = 'ИНЖЕНЕРИЯ';
 
     /**
      * Приведение к верхнему регистру с заменой Ё→Е без mbstring
@@ -63,6 +65,18 @@ class SubjectMerge
         return str_starts_with(self::normalize((string)$className), '8');
     }
 
+    /** 7 класс: по полю grade или по названию («7А», «7 А»). */
+    public static function isSeventhGrade(?int $grade, ?string $className): bool
+    {
+        if ($grade === 7) {
+            return true;
+        }
+        if ($grade !== null) {
+            return false;
+        }
+        return str_starts_with(self::normalize((string)$className), '7');
+    }
+
     private static function isInformatics(array $subject): bool
     {
         $key = self::normalize((string)($subject['name'] ?? ''));
@@ -88,6 +102,14 @@ class SubjectMerge
             || str_contains($short, self::UAV_SYSTEMS_PREFIX);
     }
 
+    private static function isBasEngineering(array $subject): bool
+    {
+        $key = self::normalize((string)($subject['name'] ?? ''));
+        $short = self::normalize((string)($subject['short_name'] ?? ''));
+        return str_starts_with($key, self::BAS_ENGINEERING_PREFIX)
+            || str_starts_with($short, self::BAS_ENGINEERING_PREFIX);
+    }
+
     /**
      * Пара предметов объединённого предмета для класса или null, если класс
      * без объединения либо в его списке нет обоих предметов пары.
@@ -102,6 +124,9 @@ class SubjectMerge
         }
         if (self::isEighthGrade($grade, $className)) {
             return self::matchPair($subjects, self::isInformatics(...), self::isUavSystems(...));
+        }
+        if (self::isSeventhGrade($grade, $className)) {
+            return self::matchPair($subjects, self::isInformatics(...), self::isBasEngineering(...));
         }
         return null;
     }
