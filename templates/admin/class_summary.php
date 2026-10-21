@@ -2,9 +2,10 @@
 /**
  * Сводка оценок класса по предметам.
  * Слоты: classes, quarters, subjects, classId, quarterId, subjectId,
- *        className, groups (см. GradeService::classSummary()).
- * Объединённые предметы (SubjectMerge) выводятся одним блоком; оценки
- * разложены по столбцам дат уроков, подсказка — тип работы и комментарий.
+ *        className, subgroups, groups (см. GradeService::classSummary()).
+ * Оценки подгрупп («7 А1», «7 А2») включены в таблицу класса; объединённые
+ * предметы (SubjectMerge) выводятся одним блоком; оценки разложены по
+ * столбцам дат уроков, подсказка — тип работы и комментарий.
  */
 $classes = $data['classes'] ?? [];
 $quarters = $data['quarters'] ?? [];
@@ -14,6 +15,7 @@ $quarterId = (int)($data['quarterId'] ?? 0);
 $subjectId = (int)($data['subjectId'] ?? 0);
 $className = (string)($data['className'] ?? '');
 $groups = $data['groups'] ?? [];
+$subgroups = $data['subgroups'] ?? [];
 ?>
 <div class="card mb-4 p-3">
   <form method="get" action="/admin/class-summary" class="grid sm:grid-cols-3 gap-3 items-end">
@@ -50,6 +52,11 @@ $groups = $data['groups'] ?? [];
 <?php elseif (!$groups): ?>
   <div class="card p-6 text-slate-500">У класса нет предметов с оценками за выбранный период.</div>
 <?php else: ?>
+  <?php if ($subgroups): ?>
+    <div class="card mb-4 px-4 py-2 text-sm text-slate-600">
+      В таблицу включены оценки подгрупп: <b><?php echo e(implode(', ', $subgroups)); ?></b>
+    </div>
+  <?php endif; ?>
   <?php foreach ($groups as $g): ?>
     <div class="card mb-6 overflow-hidden">
       <div class="px-4 py-3 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">

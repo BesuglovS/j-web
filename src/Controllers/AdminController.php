@@ -850,7 +850,8 @@ class AdminController
 
     /**
      * Сводка оценок класса по предметам: по каждому предмету — список
-     * учеников с оценками и средним. Объединённые предметы (SubjectMerge)
+     * учеников с оценками и средним. Оценки подгрупп («7 А1», «7 А2»)
+     * включаются в таблицу класса, объединённые предметы (SubjectMerge)
      * показываются одним блоком (см. GradeService::classSummary()).
      */
     public function classSummary(): string
@@ -865,15 +866,16 @@ class AdminController
         $quarters = Database::pdo()->query('SELECT * FROM quarters ORDER BY start_date')->fetchAll();
         $subjects = [];
         if ($classId) {
-            $st = Database::pdo()->prepare('SELECT * FROM subjects WHERE class_id=? ORDER BY name');
-            $st->execute([$classId]);
-            $subjects = $st->fetchAll();
+            $subjects = GradeService::subjectsForClass($classId);
         }
         $summary = GradeService::classSummary($classId, $quarterId, $subjectId);
         $className = (string)($summary['class']['name'] ?? '');
         return View::render('admin/class_summary', compact(
             'classId', 'quarterId', 'subjectId', 'classes', 'quarters', 'subjects', 'className'
-        ) + ['groups' => $summary['groups'] ?? []]);
+        ) + [
+            'groups'    => $summary['groups'] ?? [],
+            'subgroups' => $summary['subgroups'] ?? [],
+        ]);
     }
 
     // ================== Успеваемость по Python-курсу ==================
