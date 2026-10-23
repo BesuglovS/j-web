@@ -137,6 +137,7 @@ class TutorController
         $classId = (int)($_GET['class_id'] ?? 0);
         $selected = null;
         $summary = null;
+        $asOf = ['date' => null, 'time' => '', 'until' => null];
 
         if ($classId) {
             foreach ($classes as $c) {
@@ -150,9 +151,10 @@ class TutorController
                 http_response_code(403);
                 exit('Доступ запрещён.');
             }
+            $asOf = PythonProgressView::asOf($_GET, (int)$selected['id']);
             if ((int)($selected['external_id'] ?? 0) > 0) {
                 $bypassCache = isset($_GET['refresh']) && $_GET['refresh'] === '1';
-                $summary = QuizProgressService::classSummaryServer((int)$selected['external_id'], $bypassCache);
+                $summary = QuizProgressService::classSummaryServer((int)$selected['external_id'], $bypassCache, $asOf['until']);
             } else {
                 flash_set('admin_error', 'У класса нет привязки к порталу (external_id) — выполните синхронизацию классов.');
             }
@@ -169,6 +171,8 @@ class TutorController
             'title'      => 'Python-курс (мои классы)',
             'maxLessons' => $maxLessons,
             'formAction' => '/tutor/python',
+            'onDate'     => $asOf['date'],
+            'onTime'     => $asOf['time'],
         ], $slots));
     }
 

@@ -888,15 +888,17 @@ class AdminController
         $classes = Database::pdo()->query('SELECT * FROM classes ORDER BY grade, name')->fetchAll();
         $selected = null;
         $summary = null;
+        $asOf = ['date' => null, 'time' => '', 'until' => null];
         if ($classId) {
             $st = Database::pdo()->prepare('SELECT * FROM classes WHERE id=?');
             $st->execute([$classId]);
             $selected = $st->fetch();
             if ($selected) {
+                $asOf = PythonProgressView::asOf($_GET, (int)$selected['id']);
                 if ((int)($selected['external_id'] ?? 0) > 0) {
                     // «Обновить» — обходит кэш 5 мин (например, после удаления попыток на contest-web)
                     $bypassCache = isset($_GET['refresh']) && $_GET['refresh'] === '1';
-                    $summary = QuizProgressService::classSummary((int)$selected['external_id'], null, $bypassCache);
+                    $summary = QuizProgressService::classSummary((int)$selected['external_id'], null, $bypassCache, $asOf['until']);
                 } else {
                     flash_set('admin_error', 'У класса нет привязки к порталу (external_id) — выполните синхронизацию классов.');
                 }
@@ -916,6 +918,8 @@ class AdminController
             'title'      => $title,
             'maxLessons' => $maxLessons,
             'formAction' => '/admin/python-progress',
+            'onDate'     => $asOf['date'],
+            'onTime'     => $asOf['time'],
         ], $slots));
     }
 }

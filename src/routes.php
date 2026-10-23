@@ -98,6 +98,9 @@ $r->get('/api/v1/quarters',                 'ApiController@quarters');
 $r->get('/api/v1/class-journal',            'ApiController@classJournal');
 $r->get('/api/v1/grades',                   'ApiController@grades');
 
+// время начала урока класса из расписания (автоподстановка в python-прогрессе)
+$r->get('/api/python-progress/lesson-time', 'ApiController@pythonProgressLessonTime');
+
 // Внутренний сервер-к-сервер эндпоинт: auth-web после изменения родителей
 // вызывает его с доверенного IP — мгновенный синк зеркала (ParentService)
 $r->post('/api/internal/parents-sync', 'ApiController@parentsSync');

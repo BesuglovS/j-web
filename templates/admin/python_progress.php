@@ -11,11 +11,13 @@
 <?php $taskTo = (int)($data['taskTo'] ?? $maxLessons); ?>
 <?php $taskLimitOn = (bool)($data['taskLimitOn'] ?? false); ?>
 <?php $taskLimitInput = (int)($data['taskLimit'] ?? 0); ?>
+<?php $onDate = (string)($data['onDate'] ?? ''); ?>
+<?php $onTime = (string)($data['onTime'] ?? ''); ?>
 <div class="mb-4">
   <form method="get" action="<?php echo e($data['formAction'] ?? '/admin/python-progress'); ?>" class="flex flex-wrap items-end gap-3 bg-white border border-slate-200 rounded-lg p-3">
     <div>
       <label class="block text-xs text-slate-500 mb-1">Класс</label>
-      <select name="class_id" class="border border-slate-300 rounded px-2 py-1.5 text-sm">
+      <select name="class_id" id="pp-class" class="border border-slate-300 rounded px-2 py-1.5 text-sm">
         <option value="0">— выберите класс —</option>
         <?php foreach ($classes as $c): ?>
           <option value="<?php echo (int)$c['id']; ?>" <?php echo $selected && (int)$selected['id'] === (int)$c['id'] ? 'selected' : ''; ?>>
@@ -23,6 +25,15 @@
           </option>
         <?php endforeach; ?>
       </select>
+    </div>
+    <div>
+      <label class="block text-xs text-slate-500 mb-1" title="Показать прогресс, накопленный к указанному моменту. Пусто — текущий прогресс.">На дату и время</label>
+      <div class="flex items-center gap-2">
+        <input type="date" name="on_date" id="pp-on-date" value="<?php echo e($onDate); ?>"
+               class="border border-slate-300 rounded px-2 py-1.5 text-sm" title="Оценка прогресса на выбранную дату (пусто — текущие данные)">
+        <input type="time" name="on_time" id="pp-on-time" value="<?php echo e($onTime); ?>"
+               class="border border-slate-300 rounded px-2 py-1.5 text-sm" title="Время оценки; по умолчанию — начало урока класса из расписания">
+      </div>
     </div>
     <div>
       <label class="block text-xs text-slate-500 mb-1">С урока</label>
@@ -98,7 +109,35 @@
   <p class="mt-2 text-xs text-slate-500">
     Данные берутся с python.nayanovaacademy.ru (квизы уроков) и contest.nayanovaacademy.ru (задачи урока).
     Ответы кэшируются на 5 минут; кнопка «Обновить» запрашивает свежие данные, минуя кэш.
+    Поле «На дату и время» показывает прогресс, накопленный к указанному моменту (пусто — текущий прогресс).
+    Время подставляется из расписания выбранного класса (начало урока) и при необходимости меняется вручную.
   </p>
+  <script>
+  (function () {
+    var classSel = document.getElementById('pp-class');
+    var dateInput = document.getElementById('pp-on-date');
+    var timeInput = document.getElementById('pp-on-time');
+    if (!classSel || !dateInput || !timeInput) return;
+
+    // Время начала урока класса на дату из расписания журнала.
+    function fillStartTime() {
+      var classId = parseInt(classSel.value, 10) || 0;
+      var date = dateInput.value;
+      if (!classId || !date) return;
+      var url = '/api/python-progress/lesson-time?class_id=' + encodeURIComponent(classId)
+              + '&date=' + encodeURIComponent(date);
+      fetch(url, { credentials: 'same-origin', cache: 'no-store', headers: { 'Accept': 'application/json' } })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (data) {
+          if (data) timeInput.value = data.start_time || '';
+        })
+        .catch(function () {});
+    }
+
+    classSel.addEventListener('change', fillStartTime);
+    dateInput.addEventListener('change', fillStartTime);
+  })();
+  </script>
 </div>
 
 <?php if ($summary !== null && $selected): ?>
@@ -114,6 +153,13 @@
       <?php foreach ($summary['errors'] as $err): ?>
         <div>⚠ <?php echo e($err); ?></div>
       <?php endforeach; ?>
+    </div>
+  <?php endif; ?>
+
+  <?php if ($onDate !== ''): ?>
+    <div class="mb-4 p-3 rounded bg-indigo-50 border border-indigo-300 text-indigo-800 text-sm">
+      Прогресс и оценка — по состоянию на <b><?php echo e(date('d.m.Y', strtotime($onDate))); ?><?php echo $onTime !== '' ? ' в ' . e($onTime) : ''; ?></b>.
+      Показаны только квизы и решения задач, выполненные до этого момента.
     </div>
   <?php endif; ?>
 
@@ -397,7 +443,9 @@
         <span class="inline-block px-1.5 rounded bg-amber-100 text-amber-800 font-medium">жёлтый</span> — квиз не на 100% и/или задачи решены не полностью (были попытки);
         белый — квиз и задачи не пытались решать.</p>
       <p>«·» — данные по уроку отсутствуют (в т.ч. уроки вне диапазона, где ученики ещё ничего не решали).</p>
-      <p>Диапазон уроков выбирается в фильтре выше; по умолчанию — с первого по последний урок с результатами в классе.</p>
+      <p>Диапазон уроков выбирается в фильтре выше; по умолчанию — с первого по последний урок с результатами в классе.
+        Если задано поле «На дату и время», последний урок с результатами и все баллы определяются по состоянию на этот момент
+        (время по умолчанию — начало урока класса из расписания).</p>
       <p><b>Баллы</b> — число уроков, квиз которых сдан на 100%, плюс суммарно решённых задач; диапазоны уроков для квизов и задач задаются отдельно в фильтре.
         <b>Оценка</b>: меньше половины максимума — 2; вторая половина делится на три равные части — 3, 4 и 5.
         Переключатель «Баллы и оценка» скрывает эти столбцы, «Баллы квизов/задач отдельно» добавляет столбцы баллов по квизам и задачам (к общему столбцу «Баллы»).</p>

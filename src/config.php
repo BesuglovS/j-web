@@ -50,6 +50,10 @@ return [
         strtolower((string)($_SERVER['HTTP_HOST'] ?? '')))
         ? ['79.143.31.184', '127.0.0.1', '::1'] : ['79.143.31.184'],
 
+    // Часовой пояс ввода/отображения времени занятий (журнал хранит время уроков
+    // локально, внешние python-web/contest-web — UTC). Как в contest-web.
+    'display_timezone' => 'Europe/Samara',
+
     // Внешние курсы: уроки/квизы python-web и задачи contest-web
     'python_admin_url' => 'https://python.nayanovaacademy.ru/sandbox/admin_quiz.php',
     'contest_admin_url' => 'https://contest.nayanovaacademy.ru/index.php?page=api&endpoint=admin_class_progress',

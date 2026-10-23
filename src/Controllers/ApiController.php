@@ -568,6 +568,36 @@ class ApiController
         ]);
     }
 
+    /**
+     * Время начала урока класса на дату — для автоподстановки в фильтре
+     * успеваемости python-курса. Доступно администратору и тьютору
+     * (только по своим классам).
+     */
+    public function pythonProgressLessonTime(): void
+    {
+        $user = Auth::user();
+        $role = $user['role'] ?? null;
+        if (!in_array($role, ['admin', 'tutor'], true)) {
+            $this->json(['error' => 'Доступ запрещён'], 403);
+        }
+
+        $classId = (int)($_GET['class_id'] ?? 0);
+        $date = trim((string)($_GET['date'] ?? ''));
+        if ($classId <= 0 || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+            $this->json(['error' => 'Укажите class_id и date (Y-m-d)'], 400);
+        }
+
+        if ($role === 'tutor') {
+            $st = Database::pdo()->prepare('SELECT 1 FROM tutor_classes WHERE tutor_id=? AND class_id=?');
+            $st->execute([(int)$user['id'], $classId]);
+            if (!$st->fetchColumn()) {
+                $this->json(['error' => 'Доступ запрещён'], 403);
+            }
+        }
+
+        $this->json(['start_time' => PythonProgressView::lessonStartTime($classId, $date)]);
+    }
+
     public function grades(): void
     {
         $this->requireAdmin();

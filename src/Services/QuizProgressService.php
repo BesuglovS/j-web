@@ -16,19 +16,26 @@ class QuizProgressService
      * Прогресс квизов по группе (из python-web sandbox/admin_quiz.php).
      * Возвращает ['students' => [{id, name, lessons: {num: {completed, quiz_score}}}...],
      *             'max_lesson_with_quizzes' => int] или null при ошибке.
+     * @param string|null $until дата Y-m-d или точное время Y-m-d H:i:s
      */
-    public static function pythonClassProgress(int $groupId, bool $bypassCache = false): ?array
+    public static function pythonClassProgress(int $groupId, bool $bypassCache = false, ?string $until = null): ?array
     {
-        return self::apiGet(config()['python_admin_url'] . '?action=class_progress&group_id=' . $groupId, 'py_prog_' . $groupId, $bypassCache);
+        $url = self::withUntil(
+            config()['python_admin_url'] . '?action=class_progress&group_id=' . $groupId,
+            $until
+        );
+        return self::apiGet($url, self::cacheKey('py_prog_' . $groupId, $until), $bypassCache);
     }
 
     /**
      * Прогресс по задачам-контестам для группы (из contest-web).
      * Возвращает ['students' => [{id, name, contests: {contest_id: {solved, total}}}...]] или null.
+     * @param string|null $until дата Y-m-d или точное время Y-m-d H:i:s
      */
-    public static function contestClassProgress(int $groupId, bool $bypassCache = false): ?array
+    public static function contestClassProgress(int $groupId, bool $bypassCache = false, ?string $until = null): ?array
     {
-        return self::apiGet(config()['contest_admin_url'] . '&group_id=' . $groupId, 'ct_prog_' . $groupId, $bypassCache);
+        $url = self::withUntil(config()['contest_admin_url'] . '&group_id=' . $groupId, $until);
+        return self::apiGet($url, self::cacheKey('ct_prog_' . $groupId, $until), $bypassCache);
     }
 
     /**
@@ -37,29 +44,32 @@ class QuizProgressService
      * ALLOWED_SERVER_IPS на стороне python-web/contest-web). Админ продолжает
      * использовать вызовы под своей сессией (classSummary()).
      */
-    public static function classSummaryServer(int $groupId, bool $bypassCache = false): array
+    public static function classSummaryServer(int $groupId, bool $bypassCache = false, ?string $until = null): array
     {
         return self::classSummary($groupId, [
-            'python'  => self::pythonClassProgressServer($groupId, $bypassCache),
-            'contest' => self::contestClassProgressServer($groupId, $bypassCache),
-        ]);
+            'python'  => self::pythonClassProgressServer($groupId, $bypassCache, $until),
+            'contest' => self::contestClassProgressServer($groupId, $bypassCache, $until),
+        ], false, $until);
     }
 
-    private static function pythonClassProgressServer(int $groupId, bool $bypassCache): ?array
+    private static function pythonClassProgressServer(int $groupId, bool $bypassCache, ?string $until = null): ?array
     {
         return self::apiGet(
-            config()['python_admin_url'] . '?action=class_progress&group_id=' . $groupId,
-            'py_prog_s_' . $groupId,
+            self::withUntil(
+                config()['python_admin_url'] . '?action=class_progress&group_id=' . $groupId,
+                $until
+            ),
+            self::cacheKey('py_prog_s_' . $groupId, $until),
             $bypassCache,
             true
         );
     }
 
-    private static function contestClassProgressServer(int $groupId, bool $bypassCache): ?array
+    private static function contestClassProgressServer(int $groupId, bool $bypassCache, ?string $until = null): ?array
     {
         return self::apiGet(
-            config()['contest_admin_url'] . '&group_id=' . $groupId,
-            'ct_prog_s_' . $groupId,
+            self::withUntil(config()['contest_admin_url'] . '&group_id=' . $groupId, $until),
+            self::cacheKey('ct_prog_s_' . $groupId, $until),
             $bypassCache,
             true
         );
@@ -76,24 +86,33 @@ class QuizProgressService
     /**
      * @param array|null $inject  для тестов: ['python' => raw, 'contest' => raw] — вместо HTTP
      * @param bool $bypassCache  игнорировать кэш: получить свежие данные (обновить и кэш)
+     * @param string|null $until  дата Y-m-d или точное время Y-m-d H:i:s (null — текущий)
      */
-    public static function classSummary(int $groupId, ?array $inject = null, bool $bypassCache = false): array
+    public static function classSummary(int $groupId, ?array $inject = null, bool $bypassCache = false, ?string $until = null): array
     {
         $lessonContests = config()['python_lesson_contests'];
         if ($inject !== null) {
             $quizRaw = $inject['python'] ?? null;
             $contestRaw = $inject['contest'] ?? null;
         } else {
-            $quizRaw = self::pythonClassProgress($groupId, $bypassCache);
-            $contestRaw = self::contestClassProgress($groupId, $bypassCache);
+            $quizRaw = self::pythonClassProgress($groupId, $bypassCache, $until);
+            $contestRaw = self::contestClassProgress($groupId, $bypassCache, $until);
         }
 
         $errors = [];
         if ($quizRaw === null) {
             $errors[] = 'python-web: не удалось получить прогресс квизов';
+        } elseif ($until !== null && (string)($quizRaw['until'] ?? '') !== $until) {
+            // Старая версия API молча вернула бы текущие данные — не выдаём их
+            // за исторические и просим обновить python-web.
+            $quizRaw = null;
+            $errors[] = 'python-web: API не поддерживает оценку прогресса на дату и время — обновите python-web';
         }
         if ($contestRaw === null) {
             $errors[] = 'contest-web: не удалось получить прогресс задач';
+        } elseif ($until !== null && (string)($contestRaw['until'] ?? '') !== $until) {
+            $contestRaw = null;
+            $errors[] = 'contest-web: API не поддерживает оценку прогресса на дату и время — обновите contest-web';
         }
 
         $byUser = [];
@@ -170,6 +189,25 @@ class QuizProgressService
             'has_final'  => $hasFinal,
             'errors'     => $errors,
         ];
+    }
+
+    /**
+     * Добавляет к URL фильтр даты (until=Y-m-d), если он задан.
+     */
+    private static function withUntil(string $url, ?string $until): string
+    {
+        if ($until === null || $until === '') {
+            return $url;
+        }
+        return $url . (str_contains($url, '?') ? '&' : '?') . 'until=' . rawurlencode($until);
+    }
+
+    /**
+     * Ключ кэша в сессии: раздельные записи для текущих данных и каждой даты.
+     */
+    private static function cacheKey(string $base, ?string $until): string
+    {
+        return $until !== null && $until !== '' ? $base . '_on_' . $until : $base;
     }
 
     private static function apiGet(string $url, string $cacheKey, bool $bypassCache = false, bool $server = false): ?array
