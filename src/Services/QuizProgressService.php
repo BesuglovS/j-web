@@ -243,11 +243,22 @@ class QuizProgressService
         }
 
         // Быстрый путь: пакетные срезы на стороне python-web/contest-web.
-        $pyBatch = self::pythonClassProgressBatch($groupId, $untils, $bypassCache, $server);
-        $ctBatch = self::contestClassProgressBatch($groupId, $untils, $bypassCache, $server);
-        $pySnapshots = is_array($pyBatch) ? ($pyBatch['snapshots'] ?? null) : null;
-        $ctSnapshots = is_array($ctBatch) ? ($ctBatch['snapshots'] ?? null) : null;
-        if (is_array($pySnapshots) && is_array($ctSnapshots)) {
+        // До 60 моментов на запрос — с запасом к лимиту API и длине URL.
+        $pySnapshots = [];
+        $ctSnapshots = [];
+        $batchOk = true;
+        foreach (array_chunk($untils, 60) as $chunk) {
+            $pyBatch = self::pythonClassProgressBatch($groupId, $chunk, $bypassCache, $server);
+            $ctBatch = self::contestClassProgressBatch($groupId, $chunk, $bypassCache, $server);
+            if (!is_array($pyBatch) || !isset($pyBatch['snapshots']) || !is_array($pyBatch['snapshots'])
+                || !is_array($ctBatch) || !isset($ctBatch['snapshots']) || !is_array($ctBatch['snapshots'])) {
+                $batchOk = false;
+                break;
+            }
+            $pySnapshots += $pyBatch['snapshots'];
+            $ctSnapshots += $ctBatch['snapshots'];
+        }
+        if ($batchOk) {
             $out = [];
             foreach ($untils as $until) {
                 $out[$until] = self::classSummary($groupId, [
