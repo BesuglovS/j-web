@@ -13,6 +13,8 @@
 <?php $taskLimitInput = (int)($data['taskLimit'] ?? 0); ?>
 <?php $onDate = (string)($data['onDate'] ?? ''); ?>
 <?php $onTime = (string)($data['onTime'] ?? ''); ?>
+<?php $studentIdMap = $data['studentIdMap'] ?? []; ?>
+<?php $studentPageBase = (string)($data['studentPageBase'] ?? ''); ?>
 <div class="mb-4">
   <form method="get" action="<?php echo e($data['formAction'] ?? '/admin/python-progress'); ?>" class="flex flex-wrap items-end gap-3 bg-white border border-slate-200 rounded-lg p-3">
     <div>
@@ -325,7 +327,16 @@
         <tbody>
             <?php foreach ($students as $i => $s): ?>
               <tr class="hover:bg-slate-50 group">
-              <td class="sticky left-0 z-10 bg-white border-r border-slate-200 group-hover:bg-slate-50 font-medium whitespace-nowrap"><?php echo e($s['name']); ?></td>
+              <?php $localStudentId = $studentPageBase !== '' ? (int)($studentIdMap[(int)$s['id']] ?? 0) : 0; ?>
+              <td class="sticky left-0 z-10 bg-white border-r border-slate-200 group-hover:bg-slate-50 font-medium whitespace-nowrap">
+                <?php if ($localStudentId > 0): ?>
+                  <a href="<?php echo e($studentPageBase . $localStudentId); ?>"
+                     class="text-blue-600 hover:underline"
+                     title="Открыть карточку ученика: прогресс по каждому уроку и домашние задания"><?php echo e($s['name']); ?></a>
+                <?php else: ?>
+                  <?php echo e($s['name']); ?>
+                <?php endif; ?>
+              </td>
               <?php for ($n = $renderFrom; $n <= $renderTo; $n++): ?>
                 <?php if ($n === $finalN): ?>
                   <?php $quiz = isset($s['lessons'][-1]) && $s['lessons'][-1]['quiz'] !== null ? (int)$s['lessons'][-1]['quiz'] : null; ?>
@@ -438,6 +449,7 @@
     </div>
 
     <div class="mt-3 text-xs text-slate-500 space-y-1">
+      <p>Имя ученика — ссылка на его карточку: прогресс по каждому уроку, домашние задания, оценки и замечания.</p>
       <p>Формат ячейки: <b>квиз%</b> · <b>решено/всего</b> задач урока. Звёздочка после номера урока — к уроку привязаны задачи-контесты.</p>
       <p>Фон ячейки: <span class="inline-block px-1.5 rounded bg-emerald-100 text-emerald-800 font-medium">зелёный</span> — квиз на 100% и (нет задач или все задачи решены);
         <span class="inline-block px-1.5 rounded bg-amber-100 text-amber-800 font-medium">жёлтый</span> — квиз не на 100% и/или задачи решены не полностью (были попытки);

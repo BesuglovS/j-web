@@ -307,6 +307,44 @@ class AdminController
         );
         $remarks->execute([$id]);
 
+        // Домашние задания ученика (все его группы: класс и подгруппы) —
+        // со статусом сдачи, результатом и комментарием.
+        $sc = $pdo->prepare('SELECT class_id FROM student_classes WHERE student_id=?');
+        $sc->execute([$id]);
+        $classIds = array_map('intval', $sc->fetchAll(PDO::FETCH_COLUMN));
+        if (!$classIds && !empty($student['class_id'])) {
+            $classIds = [(int)$student['class_id']];
+        }
+        if (!$classIds) {
+            $classIds = [0];
+        }
+        $hwFilter = implode(',', array_fill(0, count($classIds), '?'));
+        $homeworks = $pdo->prepare(
+            "SELECT hw.*, sub.name AS subject, l.date AS lesson_date, l.topic AS lesson_topic,
+                    c.name AS class_name,
+                    (SELECT hws.status FROM homework_submissions hws WHERE hws.homework_id=hw.id AND hws.student_id=?) AS my_status,
+                    (SELECT hws.result_mark FROM homework_submissions hws WHERE hws.homework_id=hw.id AND hws.student_id=?) AS my_mark,
+                    (SELECT hws.comment FROM homework_submissions hws WHERE hws.homework_id=hw.id AND hws.student_id=?) AS my_comment
+             FROM homeworks hw
+             JOIN lessons l ON l.id=hw.lesson_id
+             JOIN subjects sub ON sub.id=l.subject_id
+             JOIN classes c ON c.id=l.class_id
+             WHERE l.class_id IN ($hwFilter)
+             ORDER BY COALESCE(hw.due_date,l.date) DESC, hw.id DESC"
+        );
+        $homeworks->execute(array_merge([$id, $id, $id], $classIds));
+
+        // Прогресс по python-курсу (квизы и задачи по каждому уроку) —
+        // сервер-к-сервер по external_id (id пользователя auth-web).
+        $progress = null;
+        $externalId = (int)($student['external_id'] ?? 0);
+        if ($externalId > 0) {
+            $progress = StudentProgressService::studentSummary(
+                $externalId,
+                isset($_GET['refresh']) && $_GET['refresh'] === '1'
+            );
+        }
+
         // Средние по предметам — только итоговые попытки (последнее переписывание)
         $allGrades = $pdo->prepare(
             'SELECT sub.name AS subject, ROUND(AVG(m.value),2) AS avg, COUNT(*) AS cnt
@@ -315,7 +353,9 @@ class AdminController
         );
         $allGrades->execute([$id]);
 
-        return View::render('admin/studentView', compact('student', 'parents', 'grades', 'remarks', 'allGrades'));
+        return View::render('admin/studentView', compact(
+            'student', 'parents', 'grades', 'remarks', 'allGrades', 'homeworks'
+        ) + ['progress' => $progress]);
     }
 
     // ================== Быстрый ввод расписания на день ==================
@@ -920,6 +960,10 @@ class AdminController
             'formAction' => '/admin/python-progress',
             'onDate'     => $asOf['date'],
             'onTime'     => $asOf['time'],
+            // ссылка с имени ученика в сводке → карточка ученика с его
+            // прогрессом по урокам и домашними заданиями
+            'studentIdMap'   => PythonProgressView::studentIdMap($classId),
+            'studentPageBase' => '/admin/students/',
         ], $slots));
     }
 }

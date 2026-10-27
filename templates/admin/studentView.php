@@ -4,6 +4,9 @@ $parents = $data['parents'] ?? [];
 $grades = $data['grades'] ?? [];
 $remarks = $data['remarks'] ?? [];
 $allGrades = $data['allGrades'] ?? [];
+$homeworks = $data['homeworks'] ?? [];
+$progress = $data['progress'] ?? null;
+$statusLabels = ['done' => 'Выполнено', 'partial' => 'Частично', 'not_done' => 'Не выполнено'];
 $name = trim($student['last_name'].' '.$student['first_name'].' '.$student['middle_name']);
 ?>
 <div class="flex justify-end mb-4"><a href="/admin/students" class="btn-secondary">← К списку</a></div>
@@ -76,3 +79,39 @@ $name = trim($student['last_name'].' '.$student['first_name'].' '.$student['midd
     <?php if (!$remarks): ?><p class="text-slate-400">Замечаний нет.</p><?php endif; ?>
   </div>
 </div>
+
+<div class="card mt-6 p-6">
+  <h4 class="font-semibold mb-3">Домашние задания</h4>
+  <?php foreach ($homeworks as $h): ?>
+    <div class="py-2 border-b text-sm">
+      <div class="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <b><?php echo e($h['title'] ?: 'Задание'); ?></b> — <?php echo e($h['subject']); ?>
+          <?php if (!empty($h['class_name'])): ?><span class="text-xs text-slate-400">(<?php echo e($h['class_name']); ?>)</span><?php endif; ?>
+        </div>
+        <div class="text-xs text-slate-500">
+          <?php if (!empty($h['due_date'])): ?>срок <?php echo e($h['due_date']); ?><?php endif; ?>
+          <?php if (!empty($h['lesson_date'])): ?><?php echo !empty($h['due_date']) ? ' · ' : ''; ?>урок <?php echo e($h['lesson_date']); ?><?php endif; ?>
+          <?php if (!empty($h['lesson_topic'])): ?> · <?php echo e($h['lesson_topic']); ?><?php endif; ?>
+        </div>
+      </div>
+      <?php if (!empty($h['description'])): ?>
+        <div class="text-xs text-slate-600 mt-1"><?php echo e($h['description']); ?></div>
+      <?php endif; ?>
+      <div class="text-xs mt-1">
+        Статус:
+        <span class="<?php echo $h['my_status'] === 'done' ? 'text-emerald-700' : ($h['my_status'] === 'partial' ? 'text-amber-700' : 'text-slate-400'); ?>">
+          <?php echo !empty($h['my_status']) ? e($statusLabels[$h['my_status']] ?? $h['my_status']) : '—'; ?>
+        </span>
+        <?php if (!empty($h['my_mark'])): ?> · Результат: <b><?php echo (int)$h['my_mark']; ?></b><?php endif; ?>
+        <?php if (!empty($h['my_comment'])): ?> · <span class="text-slate-500"><?php echo e($h['my_comment']); ?></span><?php endif; ?>
+      </div>
+    </div>
+  <?php endforeach; ?>
+  <?php if (!$homeworks): ?><p class="text-slate-400 text-sm">Заданий нет.</p><?php endif; ?>
+</div>
+
+<?php echo View::partial('partials/python_student_progress', [
+  'progress' => $progress,
+  'refreshUrl' => '/admin/students/' . (int)$student['id'] . '?refresh=1',
+]); ?>

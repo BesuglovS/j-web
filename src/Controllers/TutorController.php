@@ -173,6 +173,10 @@ class TutorController
             'formAction' => '/tutor/python',
             'onDate'     => $asOf['date'],
             'onTime'     => $asOf['time'],
+            // имя ученика ведёт в детальную карточку класса: оценки, ДЗ,
+            // замечания и прогресс по урокам python-курса
+            'studentIdMap'    => PythonProgressView::studentIdMap($classId),
+            'studentPageBase' => $classId > 0 ? '/tutor/class/' . $classId . '?student_id=' : '',
         ], $slots));
     }
 

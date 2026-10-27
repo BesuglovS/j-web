@@ -102,6 +102,36 @@ class PythonProgressView
     }
 
     /**
+     * Соответствие external_id ученика (id пользователя auth-web, как в сводке
+     * QuizProgressService) → id локального ученика журнала.
+     *
+     * По сводке python-курса известны только id/имена из auth-web; чтобы
+     * сослаться на карточку/прогресс ученика в журнале, нужен локальный id.
+     *
+     * @return array<int,int> external_id => student_id
+     */
+    public static function studentIdMap(int $classId): array
+    {
+        if ($classId <= 0) {
+            return [];
+        }
+        $st = Database::pdo()->prepare(
+            'SELECT DISTINCT s.id, s.external_id
+             FROM students s
+             LEFT JOIN student_classes sc ON sc.student_id = s.id
+             WHERE s.is_active = 1
+               AND s.external_id IS NOT NULL AND s.external_id > 0
+               AND (sc.class_id = ? OR s.class_id = ?)'
+        );
+        $st->execute([$classId, $classId]);
+        $map = [];
+        foreach ($st->fetchAll() as $row) {
+            $map[(int)$row['external_id']] = (int)$row['id'];
+        }
+        return $map;
+    }
+
+    /**
      * @param array|null $summary    результат classSummary()/classSummaryServer()
      * @param int        $maxLessons всего уроков курса
      * @param array      $get        GET-параметры фильтра
