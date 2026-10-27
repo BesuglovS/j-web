@@ -192,6 +192,247 @@ class QuizProgressService
     }
 
     /**
+     * Пакетный срез квизов python-web на несколько моментов.
+     * Возвращает ответ batch-API ({snapshots: ...}) или null при ошибке.
+     *
+     * @param string[] $untils
+     */
+    private static function pythonClassProgressBatch(int $groupId, array $untils, bool $bypassCache = false, bool $server = false): ?array
+    {
+        $url = config()['python_admin_batch_url']
+            . '&group_id=' . $groupId
+            . '&untils=' . rawurlencode(implode('|', $untils));
+        $key = 'py_batch_' . ($server ? 's_' : '') . $groupId . '_' . md5(implode('|', $untils));
+        return self::apiGet($url, $key, $bypassCache, $server);
+    }
+
+    /**
+     * Пакетный срез задач contest-web на несколько моментов.
+     * Возвращает ответ batch-API ({snapshots: ...}) или null при ошибке.
+     *
+     * @param string[] $untils
+     */
+    private static function contestClassProgressBatch(int $groupId, array $untils, bool $bypassCache = false, bool $server = false): ?array
+    {
+        $url = config()['contest_admin_batch_url']
+            . '&group_id=' . $groupId
+            . '&untils=' . rawurlencode(implode('|', $untils));
+        $key = 'ct_batch_' . ($server ? 's_' : '') . $groupId . '_' . md5(implode('|', $untils));
+        return self::apiGet($url, $key, $bypassCache, $server);
+    }
+
+    /**
+     * Пакетная загрузка сводок класса на несколько моментов времени.
+     *
+     * Для карточки ученика нужен прогресс «на начало каждого урока», то есть
+     * отдельный срез на каждую дату/время. Сначала пробуем пакетные API
+     * python-web/contest-web (один запрос на сервис), а при их недоступности
+     * откатываемся к параллельным одиночным запросам через curl_multi.
+     *
+     * @param string[] $untils моменты в UTC (Y-m-d H:i:s)
+     * @return array<string,array> until => результат classSummary()
+     */
+    public static function classSummaryBatch(int $groupId, array $untils, bool $bypassCache = false, bool $server = false): array
+    {
+        $untils = array_values(array_unique(array_filter(
+            array_map(static fn($u): string => (string)$u, $untils),
+            static fn(string $u): bool => $u !== ''
+        )));
+        if (!$untils) {
+            return [];
+        }
+
+        // Быстрый путь: пакетные срезы на стороне python-web/contest-web.
+        $pyBatch = self::pythonClassProgressBatch($groupId, $untils, $bypassCache, $server);
+        $ctBatch = self::contestClassProgressBatch($groupId, $untils, $bypassCache, $server);
+        $pySnapshots = is_array($pyBatch) ? ($pyBatch['snapshots'] ?? null) : null;
+        $ctSnapshots = is_array($ctBatch) ? ($ctBatch['snapshots'] ?? null) : null;
+        if (is_array($pySnapshots) && is_array($ctSnapshots)) {
+            $out = [];
+            foreach ($untils as $until) {
+                $out[$until] = self::classSummary($groupId, [
+                    'python'  => $pySnapshots[$until] ?? null,
+                    'contest' => $ctSnapshots[$until] ?? null,
+                ], false, $until);
+            }
+            return $out;
+        }
+
+        $raw = ['python' => [], 'contest' => []];
+        $urls = [];
+        $meta = [];
+
+        foreach ($untils as $until) {
+            foreach (['python', 'contest'] as $src) {
+                $cacheBase = ($src === 'python'
+                        ? ($server ? 'py_prog_s_' : 'py_prog_')
+                        : ($server ? 'ct_prog_s_' : 'ct_prog_')) . $groupId;
+                $cacheKey = self::cacheKey($cacheBase, $until);
+                $sessionKey = 'qp_' . $cacheKey;
+                $atKey = 'qp_at_' . $cacheKey;
+
+                if (!$bypassCache && session_status() === PHP_SESSION_ACTIVE) {
+                    $cached = $_SESSION[$sessionKey] ?? null;
+                    $cachedAt = $_SESSION[$atKey] ?? 0;
+                    if (is_array($cached) && (time() - (int)$cachedAt) < self::CACHE_TTL) {
+                        $raw[$src][$until] = $cached;
+                        continue;
+                    }
+                }
+
+                $url = $src === 'python'
+                    ? self::withUntil(config()['python_admin_url'] . '?action=class_progress&group_id=' . $groupId, $until)
+                    : self::withUntil(config()['contest_admin_url'] . '&group_id=' . $groupId, $until);
+
+                $key = $src . '|' . $until;
+                $urls[$key] = $url;
+                $meta[$key] = ['src' => $src, 'until' => $until, 'cacheKey' => $cacheKey];
+            }
+        }
+
+        if ($urls) {
+            $fetched = self::apiGetBatch($urls, $server);
+            foreach ($fetched as $key => $data) {
+                $m = $meta[$key] ?? null;
+                if ($m === null) {
+                    continue;
+                }
+                $raw[$m['src']][$m['until']] = $data;
+                if ($data !== null && session_status() === PHP_SESSION_ACTIVE) {
+                    $_SESSION['qp_' . $m['cacheKey']] = $data;
+                    $_SESSION['qp_at_' . $m['cacheKey']] = time();
+                }
+            }
+        }
+
+        $out = [];
+        foreach ($untils as $until) {
+            $out[$until] = self::classSummary($groupId, [
+                'python'  => $raw['python'][$until] ?? null,
+                'contest' => $raw['contest'][$until] ?? null,
+            ], false, $until);
+        }
+        return $out;
+    }
+
+    /**
+     * Параллельно загружает набор URL и возвращает декодированные JSON-ответы.
+     * Ошибки/не-200/timeout дают null (как apiGet()).
+     *
+     * @param array<string,string> $urls ключ => URL
+     * @return array<string,array|null>
+     */
+    private static function apiGetBatch(array $urls, bool $server = false): array
+    {
+        $result = array_fill_keys(array_keys($urls), null);
+        if (!$urls) {
+            return $result;
+        }
+
+        $cookedCookie = '';
+        if (!$server && !empty($_COOKIE['auth_session'])) {
+            $safe = preg_replace('/[^A-Za-z0-9,_\-]/', '', (string) $_COOKIE['auth_session']);
+            if ($safe !== '') {
+                $cookedCookie = 'auth_session=' . $safe;
+            }
+        }
+
+        $mh = curl_multi_init();
+        if ($mh === false) {
+            return $result;
+        }
+
+        $queue = $urls;
+        $active = [];
+        $concurrency = 8;
+        $deadline = microtime(true) + 15.0;
+
+        while ($queue || $active) {
+            if (microtime(true) >= $deadline) {
+                break;
+            }
+            while (count($active) < $concurrency && $queue) {
+                $key = array_key_first($queue);
+                $url = $queue[$key];
+                unset($queue[$key]);
+
+                $ch = curl_init($url);
+                if ($ch === false) {
+                    continue;
+                }
+                $opts = [
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_TIMEOUT => 8,
+                    CURLOPT_CONNECTTIMEOUT => 3,
+                    CURLOPT_SSL_VERIFYPEER => true,
+                    CURLOPT_FOLLOWLOCATION => false,
+                ];
+                if ($cookedCookie !== '') {
+                    $opts[CURLOPT_COOKIE] = $cookedCookie;
+                }
+                curl_setopt_array($ch, $opts);
+                curl_multi_add_handle($mh, $ch);
+                $active[spl_object_id($ch)] = ['ch' => $ch, 'key' => $key];
+            }
+
+            if (!$active) {
+                break;
+            }
+
+            do {
+                $status = curl_multi_exec($mh, $running);
+            } while ($status === CURLM_CALL_MULTI_PERFORM);
+
+            if ($status !== CURLM_OK && $status !== CURLM_CALL_MULTI_PERFORM) {
+                break;
+            }
+
+            if ($running && curl_multi_select($mh, 1.0) === -1) {
+                usleep(1000);
+            }
+
+            $processed = 0;
+            while (($info = curl_multi_info_read($mh)) !== false) {
+                $processed++;
+                $ch = $info['handle'];
+                $id = spl_object_id($ch);
+                $entry = $active[$id] ?? null;
+                if ($entry === null) {
+                    curl_multi_remove_handle($mh, $ch);
+                    curl_close($ch);
+                    continue;
+                }
+                unset($active[$id]);
+
+                $response = curl_multi_getcontent($ch);
+                $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                if ($response !== false && $httpCode === 200) {
+                    $data = json_decode((string)$response, true);
+                    if (is_array($data)) {
+                        $result[$entry['key']] = $data;
+                    }
+                }
+
+                curl_multi_remove_handle($mh, $ch);
+                curl_close($ch);
+            }
+
+            if (!$running && !$queue && $active && $processed === 0) {
+                break;
+            }
+        }
+
+        // При аварийном выходе из цикла корректно закрыть оставшиеся handles.
+        foreach ($active as $entry) {
+            curl_multi_remove_handle($mh, $entry['ch']);
+            curl_close($entry['ch']);
+        }
+        curl_multi_close($mh);
+
+        return $result;
+    }
+
+    /**
      * Добавляет к URL фильтр даты (until=Y-m-d), если он задан.
      */
     private static function withUntil(string $url, ?string $until): string

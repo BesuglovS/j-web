@@ -57,6 +57,10 @@ return [
     // Внешние курсы: уроки/квизы python-web и задачи contest-web
     'python_admin_url' => 'https://python.nayanovaacademy.ru/sandbox/admin_quiz.php',
     'contest_admin_url' => 'https://contest.nayanovaacademy.ru/index.php?page=api&endpoint=admin_class_progress',
+    // Пакетные срезы прогресса (несколько моментов одним запросом) —
+    // для истории «прогресс на начало каждого урока»
+    'python_admin_batch_url' => 'https://python.nayanovaacademy.ru/sandbox/admin_quiz.php?action=class_progress_batch',
+    'contest_admin_batch_url' => 'https://contest.nayanovaacademy.ru/index.php?page=api&endpoint=admin_class_progress_batch',
     // Эндпоинты «мой прогресс» (доступны ученикам под их SSO-сессией)
     'python_progress_url' => 'https://python.nayanovaacademy.ru/sandbox/progress.php',
     'contest_my_progress_url' => 'https://contest.nayanovaacademy.ru/index.php?page=api&endpoint=my_progress',

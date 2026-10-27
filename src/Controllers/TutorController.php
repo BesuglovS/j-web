@@ -175,8 +175,9 @@ class TutorController
             'onTime'     => $asOf['time'],
             // имя ученика ведёт в детальную карточку класса: оценки, ДЗ,
             // замечания и прогресс по урокам python-курса
-            'studentIdMap'    => PythonProgressView::studentIdMap($classId),
-            'studentPageBase' => $classId > 0 ? '/tutor/class/' . $classId . '?student_id=' : '',
+            'studentIdMap'     => PythonProgressView::studentIdMap($classId),
+            'studentPageBase'  => $classId > 0 ? '/tutor/class/' . $classId . '?student_id=' : '',
+            'studentPageQuery' => '',
         ], $slots));
     }
 
@@ -265,13 +266,14 @@ class TutorController
 
         // Прогресс по python-курсу выбранного ученика (сервер-к-сервер по external_id).
         $progress = null;
+        $timeline = null;
         if ($student) {
             $externalId = (int)($student['external_id'] ?? 0);
+            $refresh = isset($_GET['refresh']) && $_GET['refresh'] === '1';
             if ($externalId > 0) {
-                $progress = StudentProgressService::studentSummary(
-                    $externalId,
-                    isset($_GET['refresh']) && $_GET['refresh'] === '1'
-                );
+                $progress = StudentProgressService::studentSummary($externalId, $refresh);
+                // История на начало каждого урока класса (расписание журнала).
+                $timeline = StudentProgressService::lessonTimeline($classId, $externalId, $refresh, true);
             }
         }
 
@@ -285,6 +287,7 @@ class TutorController
             'homeworks' => $homeworks,
             'remarks'   => $remarks,
             'progress'  => $progress,
+            'timeline'  => $timeline,
         ]);
     }
 }

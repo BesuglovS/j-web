@@ -7,6 +7,7 @@ $bySubject = $data['bySubject'] ?? [];
 $homeworks = $data['homeworks'] ?? [];
 $remarks = $data['remarks'] ?? [];
 $progress = $data['progress'] ?? null;
+$timeline = $data['timeline'] ?? null;
 $statusLabels = ['done'=>'Выполнено','partial'=>'Частично','not_done'=>'Не выполнено'];
 ?>
 <div class="flex justify-between items-center mb-4">
@@ -99,9 +100,16 @@ $statusLabels = ['done'=>'Выполнено','partial'=>'Частично','not
   </div>
 </div>
 
+<?php
+$refreshUrl = '/tutor/class/' . (int)$classId . '?student_id=' . (int)$student['id'] . '&refresh=1';
+?>
+<?php echo View::partial('partials/python_student_timeline', [
+  'timeline' => $timeline,
+  'refreshUrl' => $refreshUrl,
+]); ?>
 <?php echo View::partial('partials/python_student_progress', [
   'progress' => $progress,
-  'refreshUrl' => '/tutor/class/' . (int)$classId . '?student_id=' . (int)$student['id'] . '&refresh=1',
+  'refreshUrl' => $refreshUrl,
 ]); ?>
 <?php endif; ?>
 <?php endif; ?>

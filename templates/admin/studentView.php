@@ -6,8 +6,12 @@ $remarks = $data['remarks'] ?? [];
 $allGrades = $data['allGrades'] ?? [];
 $homeworks = $data['homeworks'] ?? [];
 $progress = $data['progress'] ?? null;
+$timeline = $data['timeline'] ?? null;
+$timelineClassId = (int)($data['timelineClassId'] ?? 0);
 $statusLabels = ['done' => 'Выполнено', 'partial' => 'Частично', 'not_done' => 'Не выполнено'];
 $name = trim($student['last_name'].' '.$student['first_name'].' '.$student['middle_name']);
+$refreshUrl = '/admin/students/' . (int)$student['id'] . '?refresh=1'
+    . ($timelineClassId > 0 ? '&class_id=' . $timelineClassId : '');
 ?>
 <div class="flex justify-end mb-4"><a href="/admin/students" class="btn-secondary">← К списку</a></div>
 <div class="card p-6">
@@ -17,6 +21,11 @@ $name = trim($student['last_name'].' '.$student['first_name'].' '.$student['midd
     <span>Логин: <b><?php echo e((string)($student['login'] ?? '—')); ?></b></span>
   </div>
 </div>
+
+<?php echo View::partial('partials/python_student_timeline', [
+  'timeline' => $timeline,
+  'refreshUrl' => $refreshUrl,
+]); ?>
 
 <div class="grid lg:grid-cols-2 gap-6 mt-6">
   <div class="card p-6">
@@ -113,5 +122,5 @@ $name = trim($student['last_name'].' '.$student['first_name'].' '.$student['midd
 
 <?php echo View::partial('partials/python_student_progress', [
   'progress' => $progress,
-  'refreshUrl' => '/admin/students/' . (int)$student['id'] . '?refresh=1',
+  'refreshUrl' => $refreshUrl,
 ]); ?>

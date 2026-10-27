@@ -336,13 +336,40 @@ class AdminController
 
         // Прогресс по python-курсу (квизы и задачи по каждому уроку) —
         // сервер-к-сервер по external_id (id пользователя auth-web).
+        $refresh = isset($_GET['refresh']) && $_GET['refresh'] === '1';
         $progress = null;
         $externalId = (int)($student['external_id'] ?? 0);
         if ($externalId > 0) {
-            $progress = StudentProgressService::studentSummary(
-                $externalId,
-                isset($_GET['refresh']) && $_GET['refresh'] === '1'
+            $progress = StudentProgressService::studentSummary($externalId, $refresh);
+        }
+
+        // История «прогресс на начало каждого урока»: по расписанию класса.
+        // Приоритет — класс, из которого открыли карточку (class_id в ссылке).
+        $timelineClassId = (int)($_GET['class_id'] ?? 0);
+        if ($timelineClassId > 0) {
+            $chk = $pdo->prepare(
+                'SELECT 1 FROM student_classes WHERE student_id=? AND class_id=?
+                 UNION SELECT 1 FROM students WHERE id=? AND class_id=?'
             );
+            $chk->execute([$id, $timelineClassId, $id, $timelineClassId]);
+            if (!$chk->fetchColumn()) {
+                $timelineClassId = 0;
+            }
+        }
+        if ($timelineClassId <= 0) {
+            $timelineClassId = (int)($student['class_id'] ?? 0);
+        }
+        if ($timelineClassId <= 0) {
+            foreach ($classIds as $cid) {
+                if ($cid > 0) {
+                    $timelineClassId = $cid;
+                    break;
+                }
+            }
+        }
+        $timeline = null;
+        if ($externalId > 0 && $timelineClassId > 0) {
+            $timeline = StudentProgressService::lessonTimeline($timelineClassId, $externalId, $refresh, false);
         }
 
         // Средние по предметам — только итоговые попытки (последнее переписывание)
@@ -355,7 +382,11 @@ class AdminController
 
         return View::render('admin/studentView', compact(
             'student', 'parents', 'grades', 'remarks', 'allGrades', 'homeworks'
-        ) + ['progress' => $progress]);
+        ) + [
+            'progress' => $progress,
+            'timeline' => $timeline,
+            'timelineClassId' => $timelineClassId,
+        ]);
     }
 
     // ================== Быстрый ввод расписания на день ==================
@@ -962,8 +993,9 @@ class AdminController
             'onTime'     => $asOf['time'],
             // ссылка с имени ученика в сводке → карточка ученика с его
             // прогрессом по урокам и домашними заданиями
-            'studentIdMap'   => PythonProgressView::studentIdMap($classId),
+            'studentIdMap'    => PythonProgressView::studentIdMap($classId),
             'studentPageBase' => '/admin/students/',
+            'studentPageQuery' => $classId > 0 ? '?class_id=' . $classId : '',
         ], $slots));
     }
 }
